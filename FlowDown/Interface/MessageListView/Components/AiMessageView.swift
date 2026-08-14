@@ -9,11 +9,7 @@ import Storage
 import UIKit
 
 final class AiMessageView: MessageListRowView {
-    private(set) lazy var markdownView: MarkdownTextView = .init().with {
-        $0.throttleInterval = 1 / 60
-    }
-
-    private var representedMessageID: Message.ID?
+    private(set) lazy var markdownView: MarkdownTextView = .init()
 
     var linkTapHandler: ((LinkPayload, NSRange, CGPoint) -> Void)? {
         get { markdownView.linkHandler }
@@ -39,22 +35,16 @@ final class AiMessageView: MessageListRowView {
         contentView.addSubview(markdownView)
     }
 
-    /// Puts the message content on screen. The first fill for a message is
-    /// applied synchronously so a freshly (re)used row never renders blank;
-    /// subsequent updates to the same message stream through the throttled
-    /// path and update the visible content in place.
-    func setMarkdownPackage(_ package: MarkdownContent, for messageID: Message.ID) {
-        if representedMessageID == messageID {
-            markdownView.setContent(package)
-        } else {
-            representedMessageID = messageID
-            markdownView.setContentImmediately(package)
-        }
+    /// Puts the message content on screen. Theme and content are applied in
+    /// one build so a fence is not measured or painted against an empty
+    /// document. Streaming updates stay immediate: a throttled last token
+    /// that closes a fence was leaving the code block as a blank band.
+    func setMarkdownPackage(_ package: MarkdownContent, for messageID _: Message.ID) {
+        markdownView.setContentImmediately(package, theme: theme)
     }
 
     override func prepareForReuse() {
         super.prepareForReuse()
-        representedMessageID = nil
         // Parked cells still receive CodeHighlighter notifications which trigger
         // a full document rebuild; empty their content so that rebuild is free.
         markdownView.reset()

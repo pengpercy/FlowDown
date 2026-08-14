@@ -69,9 +69,8 @@ class HubModelDetailController: StackScrollController {
         theme.align(to: UIFont.preferredFont(forTextStyle: .subheadline).pointSize)
         let package = MarkdownContent(repairing: result, theme: theme)
         let markdownView = MarkdownTextView().with {
-            $0.theme = theme
             $0.trackedScrollView = scrollView
-            $0.setContentImmediately(package)
+            $0.setContentImmediately(package, theme: theme)
             $0.alpha = 0
         }
         markdownContainerView.addSubview(markdownView)
