@@ -1,8 +1,8 @@
 name: Publish
 
-# Fork-only release pipeline. Builds unsigned archives and publishes a
-# GitHub Release so a maintainer can download and verify. This file is
-# not intended for the upstream repository.
+# Fork-only release pipeline. Builds one Mac Catalyst app per CPU
+# architecture, wraps each in its own DMG, and publishes a GitHub Release.
+# Not a universal binary. This file is not intended for upstream.
 
 on:
   push:
@@ -19,9 +19,19 @@ permissions:
   contents: write
 
 jobs:
-  publish:
-    name: Build and publish
+  macos-dmg:
+    name: DMG (${{ matrix.label }})
     runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            label: apple-silicon
+            excluded: x86_64
+          - arch: x86_64
+            label: intel
+            excluded: arm64
     env:
       VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref_name }}
     steps:
@@ -56,7 +66,7 @@ jobs:
           chmod +x Resources/DevKit/scripts/strip_mlx_cuda_plugin.sh
           ./Resources/DevKit/scripts/strip_mlx_cuda_plugin.sh
 
-      - name: Archive iOS
+      - name: Archive Mac Catalyst ${{ matrix.arch }}
         run: |
           set -o pipefail
           mkdir -p BuildArtifacts
@@ -64,78 +74,106 @@ jobs:
             -workspace FlowDown.xcworkspace \
             -scheme FlowDown \
             -configuration Release \
-            -destination 'generic/platform=iOS' \
-            archive \
-            -archivePath BuildArtifacts/ios.xcarchive \
-            -resultBundlePath BuildArtifacts/ios.xcresult \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            | xcbeautify --is-ci --disable-colored-output --disable-logging
-
-      - name: Archive Mac Catalyst
-        run: |
-          set -o pipefail
-          xcodebuild \
-            -workspace FlowDown.xcworkspace \
-            -scheme FlowDown \
-            -configuration Release \
             -destination 'generic/platform=macOS,variant=Mac Catalyst' \
             archive \
-            -archivePath BuildArtifacts/macos.xcarchive \
-            -resultBundlePath BuildArtifacts/macos.xcresult \
+            -archivePath "BuildArtifacts/macos-${{ matrix.arch }}.xcarchive" \
+            -resultBundlePath "BuildArtifacts/macos-${{ matrix.arch }}.xcresult" \
+            ARCHS="${{ matrix.arch }}" \
+            ONLY_ACTIVE_ARCH=NO \
+            EXCLUDED_ARCHS="${{ matrix.excluded }}" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             | xcbeautify --is-ci --disable-colored-output --disable-logging
 
-      - name: Package artifacts
+      - name: Build single-arch DMG
         run: |
           set -euo pipefail
-          ditto -c -k --sequesterRsrc --keepParent \
-            BuildArtifacts/ios.xcarchive \
-            "BuildArtifacts/FlowDown-${VERSION}-ios.xcarchive.zip"
-          ditto -c -k --sequesterRsrc --keepParent \
-            BuildArtifacts/macos.xcarchive \
-            "BuildArtifacts/FlowDown-${VERSION}-macos.xcarchive.zip"
-
-          APP_PATH=$(find BuildArtifacts/macos.xcarchive/Products -name "*.app" -maxdepth 4 | head -n 1)
-          if [[ -n "${APP_PATH}" ]]; then
-            ditto -c -k --sequesterRsrc --keepParent \
-              "${APP_PATH}" \
-              "BuildArtifacts/FlowDown-${VERSION}-macos-unsigned.app.zip"
+          ARCH="${{ matrix.arch }}"
+          ARCHIVE="BuildArtifacts/macos-${ARCH}.xcarchive"
+          APP_PATH=$(find "${ARCHIVE}/Products" -name "*.app" -maxdepth 5 | head -n 1)
+          if [[ -z "${APP_PATH}" ]]; then
+            echo "No .app found in ${ARCHIVE}" >&2
+            exit 1
           fi
 
-          {
-            echo "Unsigned ${VERSION} build from ${GITHUB_SHA}."
-            echo
-            echo "The .app zip is unsigned. On macOS: unzip, then right-click the app and choose Open."
-            echo "xcarchive zips are for Xcode Organizer / further signing."
-          } > BuildArtifacts/notes.md
+          BINARY=$(find "${APP_PATH}/Contents/MacOS" -type f -perm +111 | head -n 1)
+          if [[ -z "${BINARY}" ]]; then
+            echo "No executable found in ${APP_PATH}" >&2
+            exit 1
+          fi
+          LIPO_ARCHS=$(lipo -archs "${BINARY}")
+          echo "binary=${BINARY}"
+          echo "lipo-archs=${LIPO_ARCHS}"
+          if [[ "${LIPO_ARCHS}" != "${ARCH}" ]]; then
+            echo "Expected a single ${ARCH} slice, got: ${LIPO_ARCHS}" >&2
+            exit 1
+          fi
 
-      - name: Upload workflow artifacts
+          STAGE=$(mktemp -d)
+          APP_NAME=$(basename "${APP_PATH}")
+          ditto "${APP_PATH}" "${STAGE}/${APP_NAME}"
+          DMG="BuildArtifacts/FlowDown-${VERSION}-${ARCH}.dmg"
+          hdiutil create \
+            -volname "FlowDown ${VERSION} ${ARCH}" \
+            -srcfolder "${STAGE}" \
+            -ov \
+            -format UDZO \
+            "${DMG}"
+          rm -rf "${STAGE}"
+          ls -lh "${DMG}"
+
+      - name: Upload DMG
         uses: actions/upload-artifact@v4
         with:
-          name: FlowDown-${{ env.VERSION }}-unsigned
-          path: |
-            BuildArtifacts/FlowDown-${{ env.VERSION }}-ios.xcarchive.zip
-            BuildArtifacts/FlowDown-${{ env.VERSION }}-macos.xcarchive.zip
-            BuildArtifacts/FlowDown-${{ env.VERSION }}-macos-unsigned.app.zip
+          name: FlowDown-${{ env.VERSION }}-${{ matrix.arch }}-dmg
+          path: BuildArtifacts/FlowDown-${{ env.VERSION }}-${{ matrix.arch }}.dmg
           if-no-files-found: error
           retention-days: 14
+
+  release:
+    name: GitHub Release
+    needs: macos-dmg
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref_name }}
+    steps:
+      - name: Download DMGs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: FlowDown-${{ env.VERSION }}-*-dmg
+          merge-multiple: true
+          path: dist
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          if gh release view "${VERSION}" >/dev/null 2>&1; then
+          ARM_DMG="dist/FlowDown-${VERSION}-arm64.dmg"
+          INTEL_DMG="dist/FlowDown-${VERSION}-x86_64.dmg"
+          test -f "${ARM_DMG}"
+          test -f "${INTEL_DMG}"
+
+          {
+            echo "Unsigned ${VERSION} Mac Catalyst builds from ${GITHUB_SHA}."
+            echo
+            echo "| File | CPU |"
+            echo "| --- | --- |"
+            echo "| \`FlowDown-${VERSION}-arm64.dmg\` | Apple Silicon |"
+            echo "| \`FlowDown-${VERSION}-x86_64.dmg\` | Intel (x86_64) |"
+            echo
+            echo "These are single-architecture builds, not a universal binary."
+            echo "The apps are unsigned. On macOS: open the matching DMG, drag the app out, then right-click and choose Open."
+          } > notes.md
+
+          if gh release view "${VERSION}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
             echo "Release ${VERSION} already exists; deleting to replace"
-            gh release delete "${VERSION}" --yes
+            gh release delete "${VERSION}" --repo "${GITHUB_REPOSITORY}" --yes
           fi
           gh release create "${VERSION}" \
+            --repo "${GITHUB_REPOSITORY}" \
             --title "FlowDown ${VERSION}" \
-            --notes-file BuildArtifacts/notes.md \
-            BuildArtifacts/FlowDown-${VERSION}-ios.xcarchive.zip \
-            BuildArtifacts/FlowDown-${VERSION}-macos.xcarchive.zip \
-            BuildArtifacts/FlowDown-${VERSION}-macos-unsigned.app.zip
+            --notes-file notes.md \
+            "${ARM_DMG}" \
+            "${INTEL_DMG}"
