@@ -81,12 +81,14 @@ jobs:
             ARCHS="${{ matrix.arch }}" \
             ONLY_ACTIVE_ARCH=NO \
             EXCLUDED_ARCHS="${{ matrix.excluded }}" \
+            ENABLE_APP_SANDBOX=NO \
+            ENABLE_HARDENED_RUNTIME=NO \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             | xcbeautify --is-ci --disable-colored-output --disable-logging
 
-      - name: Build single-arch DMG
+      - name: Ad-hoc sign and wrap a single-arch HFS+ DMG
         run: |
           set -euo pipefail
           ARCH="${{ matrix.arch }}"
@@ -110,15 +112,24 @@ jobs:
             exit 1
           fi
 
+          # Linker-signed / unsigned Catalyst apps have no sealed Info.plist.
+          # Finder then reports “没有权限打开 (null)” when the user right-clicks
+          # Open. An ad-hoc bundle signature binds the plist and resources.
           STAGE=$(mktemp -d)
           APP_NAME=$(basename "${APP_PATH}")
           ditto "${APP_PATH}" "${STAGE}/${APP_NAME}"
+          xattr -cr "${STAGE}/${APP_NAME}"
+          codesign --force --deep --sign - --timestamp=none "${STAGE}/${APP_NAME}"
+          codesign --verify --verbose=2 "${STAGE}/${APP_NAME}"
+          ln -s /Applications "${STAGE}/Applications"
+
           DMG="BuildArtifacts/FlowDown-${VERSION}-${ARCH}.dmg"
           hdiutil create \
             -volname "FlowDown ${VERSION} ${ARCH}" \
             -srcfolder "${STAGE}" \
-            -ov \
+            -fs HFS+ \
             -format UDZO \
+            -ov \
             "${DMG}"
           rm -rf "${STAGE}"
           ls -lh "${DMG}"
@@ -163,8 +174,12 @@ jobs:
             echo "| \`FlowDown-${VERSION}-arm64.dmg\` | Apple Silicon |"
             echo "| \`FlowDown-${VERSION}-x86_64.dmg\` | Intel (x86_64) |"
             echo
-            echo "These are single-architecture builds, not a universal binary."
-            echo "The apps are unsigned. On macOS: open the matching DMG, drag the app out, then right-click and choose Open."
+            echo "These are single-architecture ad-hoc-signed builds, not a universal binary."
+            echo
+            echo "On macOS:"
+            echo "1. Open the DMG that matches this Mac."
+            echo "2. Drag FlowDown.app to Applications (do not launch it from the DMG)."
+            echo "3. In Applications, right-click FlowDown and choose Open."
           } > notes.md
 
           if gh release view "${VERSION}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
