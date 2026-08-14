@@ -39,7 +39,7 @@ final class AiMessageView: MessageListRowView {
     /// one build so a fence is not measured or painted against an empty
     /// document. Streaming updates stay immediate: a throttled last token
     /// that closes a fence was leaving the code block as a blank band.
-    func setMarkdownPackage(_ package: MarkdownContent, for messageID _: Message.ID) {
+    func setMarkdownPackage(_ package: MarkdownContent, for _: Message.ID) {
         markdownView.setContentImmediately(package, theme: theme)
     }
 
