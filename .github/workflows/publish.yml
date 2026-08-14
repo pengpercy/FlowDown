@@ -81,14 +81,12 @@ jobs:
             ARCHS="${{ matrix.arch }}" \
             ONLY_ACTIVE_ARCH=NO \
             EXCLUDED_ARCHS="${{ matrix.excluded }}" \
-            ENABLE_APP_SANDBOX=NO \
-            ENABLE_HARDENED_RUNTIME=NO \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             | xcbeautify --is-ci --disable-colored-output --disable-logging
 
-      - name: Ad-hoc sign and wrap a single-arch HFS+ DMG
+      - name: Ad-hoc sign with sandbox and wrap a single-arch HFS+ DMG
         run: |
           set -euo pipefail
           ARCH="${{ matrix.arch }}"
@@ -112,16 +110,45 @@ jobs:
             exit 1
           fi
 
-          # Linker-signed / unsigned Catalyst apps have no sealed Info.plist.
-          # Finder then reports “没有权限打开 (null)” when the user right-clicks
-          # Open. An ad-hoc bundle signature binds the plist and resources.
+          # Release builds fatalError if /tmp is writable — the app must be
+          # sandboxed. Finder also needs a real bundle signature (not linker-
+          # signed) or it reports “没有权限打开 (null)”.
+          ENTITLEMENTS=$(mktemp)
+          cat > "${ENTITLEMENTS}" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>com.apple.security.app-sandbox</key>
+            <true/>
+            <key>com.apple.security.network.client</key>
+            <true/>
+            <key>com.apple.security.files.user-selected.read-write</key>
+            <true/>
+            <key>com.apple.security.device.audio-input</key>
+            <true/>
+            <key>com.apple.security.personal-information.calendars</key>
+            <true/>
+            <key>com.apple.security.personal-information.photos-library</key>
+            <true/>
+          </dict>
+          </plist>
+          PLIST
+
           STAGE=$(mktemp -d)
           APP_NAME=$(basename "${APP_PATH}")
           ditto "${APP_PATH}" "${STAGE}/${APP_NAME}"
           xattr -cr "${STAGE}/${APP_NAME}"
-          codesign --force --deep --sign - --timestamp=none "${STAGE}/${APP_NAME}"
+          while IFS= read -r nested; do
+            codesign --force --sign - --timestamp=none "${nested}"
+          done < <(find "${STAGE}/${APP_NAME}/Contents/Frameworks" -name '*.dylib' -o -name '*.framework' | sort)
+          codesign --force --sign - --timestamp=none \
+            --entitlements "${ENTITLEMENTS}" \
+            "${STAGE}/${APP_NAME}"
           codesign --verify --verbose=2 "${STAGE}/${APP_NAME}"
+          codesign -d --entitlements - "${STAGE}/${APP_NAME}"
           ln -s /Applications "${STAGE}/Applications"
+          rm -f "${ENTITLEMENTS}"
 
           DMG="BuildArtifacts/FlowDown-${VERSION}-${ARCH}.dmg"
           hdiutil create \

@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Security
 import Storage
 
 /// Centralizes core services so they can be swapped (for previews/tests) without touching global singletons.
@@ -61,7 +62,10 @@ nonisolated extension AppEnvironment.Container {
         let storage = try Storage.db()
         let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
 
-        let shouldEnableCloudSync = SyncEngine.isCloudSyncSupported(containerIdentifier: CloudKitConfig.containerIdentifier)
+        // Sideloaded / ad-hoc builds have no iCloud entitlement. Creating a
+        // live CKContainer then traps in CloudKit. Fall back to mock sync.
+        let shouldEnableCloudSync = processHasICloudServicesEntitlement()
+            && SyncEngine.isCloudSyncSupported(containerIdentifier: CloudKitConfig.containerIdentifier)
         let shouldUseMockSync = isRunningTests || !shouldEnableCloudSync
         if !shouldEnableCloudSync || shouldUseMockSync {
             SyncEngine.setSyncEnabled(false)
@@ -84,6 +88,20 @@ nonisolated extension AppEnvironment.Container {
         )
         return .init(storage: storage, syncEngine: syncEngine)
     }
+}
+
+/// True when this process was signed with CloudKit. Ad-hoc verification
+/// builds omit that restricted entitlement, so live sync must not start.
+private nonisolated func processHasICloudServicesEntitlement() -> Bool {
+    guard let task = SecTaskCreateFromSelf(nil) else { return false }
+    var error: Unmanaged<CFError>?
+    let value = SecTaskCopyValueForEntitlement(
+        task,
+        "com.apple.developer.icloud-services" as CFString,
+        &error,
+    )
+    error?.release()
+    return value != nil
 }
 
 /// Convenience accessors to keep existing call sites small.
