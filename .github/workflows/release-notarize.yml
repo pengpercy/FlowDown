@@ -1,9 +1,10 @@
 name: Notarize Release
 
 on:
-  push:
-    tags:
-      - "*.*.*"
+  # Disabled on this fork: notarization needs Apple secrets the fork does not
+  # have. Unsigned releases go through publish.yml instead. Restore the
+  # `push: tags: ["*.*.*"]` trigger before sending this file upstream.
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -11,7 +12,6 @@ permissions:
 jobs:
   notarize:
     name: Notarize macOS build
-    if: ${{ secrets.NOTARY_TOOLBOX_ZIP_BASE64 != '' }}
     runs-on: macos-26
     env:
       VERSION: ${{ github.ref_name }}
