@@ -11,6 +11,7 @@ permissions:
 jobs:
   notarize:
     name: Notarize macOS build
+    if: ${{ secrets.NOTARY_TOOLBOX_ZIP_BASE64 != '' }}
     runs-on: macos-26
     env:
       VERSION: ${{ github.ref_name }}
