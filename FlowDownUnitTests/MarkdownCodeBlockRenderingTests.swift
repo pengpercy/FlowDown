@@ -89,6 +89,48 @@ struct MarkdownCodeBlockRenderingTests {
 
     @Test
     @MainActor
+    func `a fence configured at zero width appears once the row is laid out`() {
+        let theme = MarkdownTheme.default
+        let content = package(fencedSwift, theme: theme)
+        let row = AiMessageView()
+        row.theme = theme
+        row.setMarkdownPackage(content, for: "zero-width")
+        #expect(row.markdownView.bounds.width == 0)
+
+        let height = MarkdownTextView().with {
+            $0.setContentImmediately(content, theme: theme)
+        }.boundingSize(for: 360).height
+        row.frame = CGRect(x: 0, y: 0, width: 360, height: height + MessageListView.listRowInsets.bottom)
+        row.layoutIfNeeded()
+
+        #expect(!visibleContextViews(in: row.markdownView).isEmpty)
+    }
+
+    @Test
+    @MainActor
+    func `replacing empty content with a fence without changing the row size shows the code view`() {
+        let theme = MarkdownTheme.default
+        let empty = package("Just prose.", theme: theme)
+        let fenced = package(fencedSwift, theme: theme)
+        let row = AiMessageView()
+        row.theme = theme
+        let height = MarkdownTextView().with {
+            $0.setContentImmediately(fenced, theme: theme)
+        }.boundingSize(for: 360).height
+        row.frame = CGRect(x: 0, y: 0, width: 360, height: height + MessageListView.listRowInsets.bottom)
+        row.layoutIfNeeded()
+
+        row.setMarkdownPackage(empty, for: "same-size")
+        row.layoutIfNeeded()
+        row.setMarkdownPackage(fenced, for: "same-size")
+        row.setNeedsLayout()
+        row.layoutIfNeeded()
+
+        #expect(!visibleContextViews(in: row.markdownView).isEmpty)
+    }
+
+    @Test
+    @MainActor
     func `sizing pool and visible row agree on height for a fenced block`() async throws {
         try await FlowDownTestContext.shared.ensureBootstrappedEnvironment()
         let conversation = sdb.conversationMake { conversation in
