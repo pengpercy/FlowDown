@@ -70,10 +70,10 @@ final class AiMessageView: MessageListRowView {
         // unattached/zero-sized text layout is placed without waiting for a
         // later window resize.
         DispatchQueue.main.async { [weak self] in
-            guard let self, window != nil else { return }
+            guard let self, self.window != nil else { return }
             UIView.performWithoutAnimation {
-                layoutIfNeeded()
-                installMarkdownFrameAndRelayout()
+                self.layoutIfNeeded()
+                self.installMarkdownFrameAndRelayout()
             }
         }
     }
