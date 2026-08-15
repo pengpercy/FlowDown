@@ -55,11 +55,27 @@ final class AiMessageView: MessageListRowView {
                 representedMessageID = messageID
                 markdownView.setContentImmediately(package, theme: theme)
             }
-            if bounds.width > 0 {
+            setNeedsLayout()
+            layoutIfNeeded()
+            installMarkdownFrameAndRelayout()
+        }
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        guard window != nil else { return }
+
+        // ListViewKit fills a row before attaching it. Schedule one more pass
+        // after the row joins the window so a fence first built against an
+        // unattached/zero-sized text layout is placed without waiting for a
+        // later window resize.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, window != nil else { return }
+            UIView.performWithoutAnimation {
+                layoutIfNeeded()
                 installMarkdownFrameAndRelayout()
             }
         }
-        setNeedsLayout()
     }
 
     override func prepareForReuse() {

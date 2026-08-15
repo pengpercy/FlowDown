@@ -108,25 +108,27 @@ struct MarkdownCodeBlockRenderingTests {
 
     @Test
     @MainActor
-    func `replacing empty content with a fence without changing the row size shows the code view`() {
+    func `a deferred streaming fence relayouts without changing the row size`() async throws {
         let theme = MarkdownTheme.default
         let empty = package("Just prose.", theme: theme)
         let fenced = package(fencedSwift, theme: theme)
+        let completed = package(fencedSwift + "\n\nDone.", theme: theme)
         let row = AiMessageView()
         row.theme = theme
         let height = MarkdownTextView().with {
-            $0.setContentImmediately(fenced, theme: theme)
+            $0.setContentImmediately(completed, theme: theme)
         }.boundingSize(for: 360).height
         row.frame = CGRect(x: 0, y: 0, width: 360, height: height + MessageListView.listRowInsets.bottom)
         row.layoutIfNeeded()
 
         row.setMarkdownPackage(empty, for: "same-size")
-        row.layoutIfNeeded()
         row.setMarkdownPackage(fenced, for: "same-size")
-        row.setNeedsLayout()
+        row.setMarkdownPackage(completed, for: "same-size")
+        try await Task.sleep(for: .milliseconds(50))
         row.layoutIfNeeded()
 
         #expect(!visibleContextViews(in: row.markdownView).isEmpty)
+        #expect(row.markdownView.textLabelView.attributedText.string.contains("Done."))
     }
 
     @Test

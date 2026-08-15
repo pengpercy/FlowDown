@@ -256,6 +256,22 @@ final class MessageListView: UIView {
         listView.apply(entries(from: session.messages), animated: animated)
     }
 
+    /// Streams usually mutate the current assistant entry without changing the
+    /// list's structure. Update that entry directly: a full animated diff puts
+    /// its row into a spring on every token, while MarkdownView is rebuilding
+    /// its fenced-code context view. The single-row path lays the changed row
+    /// out synchronously and keeps the code view stable.
+    private func updateVisibleEntries(_ entries: [Entry]) {
+        guard entries.map(\.id) == listView.content.map(\.id) else {
+            listView.apply(entries, animated: true)
+            return
+        }
+
+        for entry in entries {
+            listView.update(entry)
+        }
+    }
+
     func updateFromUpstreamPublisher(_ messages: [Message], _ scrolling: Bool, isLoading: String?) {
         assert(!Thread.isMainThread)
         #if DEBUG
@@ -290,10 +306,10 @@ final class MessageListView: UIView {
                     }
                 }
             } else {
-                listView.apply(entries, animated: true)
+                updateVisibleEntries(entries)
                 #if DEBUG
                     // TEMP scroll-diag: remove after #2.
-                    Logger.ui.infoFile("[scroll-diag] apply shouldScroll=\(shouldScrolling) offset=\(Int(listView.contentOffset.y)) max=\(Int(listView.maximumContentOffset.y))")
+                    Logger.ui.infoFile("[scroll-diag] update shouldScroll=\(shouldScrolling) offset=\(Int(listView.contentOffset.y)) max=\(Int(listView.maximumContentOffset.y))")
                 #endif
                 if shouldScrolling {
                     listView.scroll(to: listView.maximumContentOffset)
