@@ -1212,7 +1212,7 @@
 			repositoryURL = "https://github.com/pengpercy/MarkdownView";
 			requirement = {
 				kind = exactVersion;
-				version = 4.3.2-flowdown.3;
+				version = 4.3.2-flowdown.4;
 			};
 		};
 		50A350BA2F20A00000B1F430 /* XCRemoteSwiftPackageReference "Litext" */ = {
