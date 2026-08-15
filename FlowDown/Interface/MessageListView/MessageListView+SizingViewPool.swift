@@ -54,12 +54,15 @@ extension MessageListView {
             }
 
             let view = entries[message.id]?.view ?? MarkdownTextView()
+            // The expansion flag goes in before the content: the height a
+            // fence reserves is decided while the content is built, so a view
+            // that receives the flag afterwards measures one build short.
+            view.codeBlocksAreExpanded = codeBlocksAreExpanded
             // Theme assignment alone rebuilds whatever the view already holds.
             // A sizing pass always has new content in the same breath, so both
             // land in one build — otherwise a fence can be measured against an
             // empty document and the on-screen row is given a blank height.
             view.setContentImmediately(content(), theme: theme)
-            view.codeBlocksAreExpanded = codeBlocksAreExpanded
             entries[message.id] = .init(view: view, contentHash: contentHash, theme: theme)
             touch(message.id)
             evictIfNeeded()
