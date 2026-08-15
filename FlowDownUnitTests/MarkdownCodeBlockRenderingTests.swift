@@ -22,7 +22,7 @@ struct MarkdownCodeBlockRenderingTests {
     """
 
     @MainActor
-    private func package(_ markdown: String, theme: MarkdownTheme = .default) -> MarkdownContent {
+    private func package(_ markdown: String, theme: MarkdownTheme) -> MarkdownContent {
         MarkdownContent(repairing: MarkdownParser().parse(markdown), theme: theme)
     }
 
