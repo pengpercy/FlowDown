@@ -93,15 +93,27 @@ nonisolated extension AppEnvironment.Container {
 /// True when this process was signed with CloudKit. Ad-hoc verification
 /// builds omit that restricted entitlement, so live sync must not start.
 private nonisolated func processHasICloudServicesEntitlement() -> Bool {
-    guard let task = SecTaskCreateFromSelf(nil) else { return false }
-    var error: Unmanaged<CFError>?
-    let value = SecTaskCopyValueForEntitlement(
-        task,
-        "com.apple.developer.icloud-services" as CFString,
-        &error,
-    )
-    error?.release()
-    return value != nil
+    #if targetEnvironment(macCatalyst)
+        guard let task = SecTaskCreateFromSelf(nil) else { return false }
+        var error: Unmanaged<CFError>?
+        let value = SecTaskCopyValueForEntitlement(
+            task,
+            "com.apple.developer.icloud-services" as CFString,
+            &error,
+        )
+        error?.release()
+        return value != nil
+    #elseif targetEnvironment(simulator)
+        // SecTask entitlement APIs are unavailable to iOS Simulator. Tests use
+        // mock sync, so treating the simulator as unsigned is both correct and
+        // prevents a CloudKit container from being created during test setup.
+        return false
+    #else
+        // Keep the existing iOS-device behavior. The SecTask entitlement APIs
+        // are macOS/Catalyst-only, while App Store-signed iOS builds continue
+        // to use their configured CloudKit container.
+        return true
+    #endif
 }
 
 /// Convenience accessors to keep existing call sites small.
