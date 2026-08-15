@@ -5,3 +5,7 @@
 	path = Frameworks/mlx-swift-lm
 	url = https://github.com/ml-explore/mlx-swift-lm.git
 	branch = main
+[submodule "Frameworks/MarkdownView"]
+	path = Frameworks/MarkdownView
+	url = https://github.com/pengpercy/MarkdownView.git
+	branch = main
