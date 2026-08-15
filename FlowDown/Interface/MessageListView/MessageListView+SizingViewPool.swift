@@ -40,6 +40,7 @@ extension MessageListView {
         func view(
             for message: MessageRepresentation,
             theme: MarkdownTheme,
+            codeBlocksAreExpanded: Bool,
             content: () -> MarkdownContent,
         ) -> MarkdownTextView {
             let contentHash = message.content.hashValue
@@ -47,6 +48,7 @@ extension MessageListView {
                entry.contentHash == contentHash,
                entry.theme == theme
             {
+                entry.view.codeBlocksAreExpanded = codeBlocksAreExpanded
                 touch(message.id)
                 return entry.view
             }
@@ -57,6 +59,7 @@ extension MessageListView {
             // land in one build — otherwise a fence can be measured against an
             // empty document and the on-screen row is given a blank height.
             view.setContentImmediately(content(), theme: theme)
+            view.codeBlocksAreExpanded = codeBlocksAreExpanded
             entries[message.id] = .init(view: view, contentHash: contentHash, theme: theme)
             touch(message.id)
             evictIfNeeded()

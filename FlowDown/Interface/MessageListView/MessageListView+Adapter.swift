@@ -86,7 +86,11 @@ extension MessageListView {
                 .height { [weak self] entry, context in
                     guard let self, case let .aiContent(_, message) = entry else { return 0 }
                     return rowHeight(inListWidth: context.width) { containerWidth in
-                        let sizingView = self.markdownSizingViewPool.view(for: message, theme: self.theme) {
+                        let sizingView = self.markdownSizingViewPool.view(
+                            for: message,
+                            theme: self.theme,
+                            codeBlocksAreExpanded: self.expandedCodeMessageIDs.contains(message.id),
+                        ) {
                             self.markdownPackageCache.package(for: message, theme: self.theme)
                         }
                         return ceil(sizingView.boundingSize(for: containerWidth).height)
@@ -96,6 +100,17 @@ extension MessageListView {
                     guard let self, case let .aiContent(messageID, message) = entry else { return }
                     prepare(row, for: entry)
                     let package = markdownPackageCache.package(for: message, theme: theme)
+                    row.codeBlocksAreExpanded = expandedCodeMessageIDs.contains(messageID)
+                    row.codeBlockExpansionHandler = { [weak self] isExpanded in
+                        guard let self else { return }
+                        if isExpanded {
+                            self.expandedCodeMessageIDs.insert(messageID)
+                        } else {
+                            self.expandedCodeMessageIDs.remove(messageID)
+                        }
+                        self.listView.invalidateLayout(forRowWith: entry.id)
+                        self.listView.layoutIfNeeded()
+                    }
                     row.setMarkdownPackage(package, for: messageID)
                     row.linkTapHandler = { [weak self, weak row] link, range, touchLocation in
                         guard let self, let row else { return }

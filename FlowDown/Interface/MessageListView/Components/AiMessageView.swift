@@ -19,6 +19,11 @@ final class AiMessageView: MessageListRowView {
     private var pendingPackage: MarkdownContent?
     private var displayLink: CADisplayLink?
 
+    var codeBlocksAreExpanded = false {
+        didSet { markdownView.codeBlocksAreExpanded = codeBlocksAreExpanded }
+    }
+    var codeBlockExpansionHandler: ((Bool) -> Void)?
+
     var linkTapHandler: ((LinkPayload, NSRange, CGPoint) -> Void)? {
         get { markdownView.linkHandler }
         set { markdownView.linkHandler = newValue }
@@ -44,6 +49,9 @@ final class AiMessageView: MessageListRowView {
     }
 
     private func configureSubviews() {
+        markdownView.codeBlockExpansionDidChange = { [weak self] isExpanded in
+            self?.codeBlockExpansionHandler?(isExpanded)
+        }
         contentView.addSubview(markdownView)
     }
 
@@ -72,6 +80,8 @@ final class AiMessageView: MessageListRowView {
         displayLink = nil
         pendingPackage = nil
         representedMessageID = nil
+        codeBlocksAreExpanded = false
+        codeBlockExpansionHandler = nil
         // Parked cells still receive CodeHighlighter notifications which trigger
         // a full document rebuild; empty their content so that rebuild is free.
         markdownView.reset()

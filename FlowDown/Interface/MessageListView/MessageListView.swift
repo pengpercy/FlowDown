@@ -86,6 +86,7 @@ final class MessageListView: UIView {
     private(set) lazy var labelForSizeCalculation: TextLabelView = .init()
     private(set) lazy var markdownSizingViewPool: MarkdownSizingViewPool = .init()
     private(set) lazy var markdownPackageCache: MarkdownPackageCache = .init()
+    private var expandedCodeMessageIDs: Set<Message.ID> = []
 
     #if DEBUG
         // TEMP scroll-diag: remove after #2.
