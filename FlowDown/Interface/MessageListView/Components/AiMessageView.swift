@@ -99,6 +99,17 @@ final class AiMessageView: MessageListRowView {
         }
     }
 
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        // A conversation opened for the first time installs its rows while the
+        // hierarchy is not attached to a window yet. Force one real layout pass
+        // once it is, so fenced-code views placed against the detached tree are
+        // re-synced instead of waiting for a window resize.
+        guard window != nil else { return }
+        setNeedsLayout()
+        layoutIfNeeded()
+    }
+
     private func schedulePendingPackage() {
         guard pendingPackage != nil else { return }
         guard window != nil else {

@@ -510,14 +510,14 @@ extension MessageListView {
             nav.view.backgroundColor = .background
             let holder = AlertBaseController(
                 rootViewController: nav,
-                preferredWidth: 555,
-                preferredHeight: 555,
+                preferredWidth: 720,
+                preferredHeight: 640,
             )
             holder.shouldDismissWhenTappedAround = true
             holder.shouldDismissWhenEscapeKeyPressed = true
         #else
             let holder = UINavigationController(rootViewController: controller)
-            holder.preferredContentSize = .init(width: 555, height: 555 - holder.navigationBar.frame.height)
+            holder.preferredContentSize = .init(width: 640, height: 600 - holder.navigationBar.frame.height)
             holder.modalTransitionStyle = .coverVertical
             holder.modalPresentationStyle = .formSheet
             holder.view.backgroundColor = .background

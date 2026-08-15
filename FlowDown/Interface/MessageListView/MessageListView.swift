@@ -291,7 +291,16 @@ final class MessageListView: UIView {
                     }
                 }
             } else {
-                listView.apply(entries, animated: true)
+                // Animate structural changes (rows appearing or going away),
+                // but apply content-only updates outright: streaming rewrites
+                // the same rows many times a second, and every pass through
+                // the list animation re-springs each row's frame, which reads
+                // as a flicker in anything laid out inside the row — fenced
+                // code blocks most of all.
+                let current = listView.content
+                let structureChanged = entries.count != current.count
+                    || !zip(entries, current).allSatisfy { $0.id == $1.id }
+                listView.apply(entries, animated: structureChanged)
                 #if DEBUG
                     // TEMP scroll-diag: remove after #2.
                     Logger.ui.infoFile("[scroll-diag] apply shouldScroll=\(shouldScrolling) offset=\(Int(listView.contentOffset.y)) max=\(Int(listView.maximumContentOffset.y))")

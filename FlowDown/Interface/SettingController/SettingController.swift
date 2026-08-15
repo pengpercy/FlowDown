@@ -28,8 +28,8 @@ import UIKit
             let nav = NavigationController()
             self.init(
                 rootViewController: nav,
-                preferredWidth: 600,
-                preferredHeight: 600,
+                preferredWidth: 720,
+                preferredHeight: 640,
             )
 
             content = nav
@@ -87,7 +87,7 @@ import UIKit
             navigationBar.prefersLargeTitles = false
             modalPresentationStyle = .formSheet
             modalTransitionStyle = .coverVertical
-            preferredContentSize = .init(width: 550, height: 550 - navigationBar.height)
+            preferredContentSize = .init(width: 640, height: 600 - navigationBar.height)
             view.backgroundColor = .background
         }
 
