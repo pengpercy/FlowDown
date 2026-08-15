@@ -1,6 +1,7 @@
 @testable import FlowDown
 import MarkdownParser
 import MarkdownView
+import Storage
 import Testing
 import UIKit
 
