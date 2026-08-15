@@ -39,42 +39,16 @@ final class AiMessageView: MessageListRowView {
         contentView.addSubview(markdownView)
     }
 
-    /// Puts the message content on screen.
-    ///
-    /// The first fill for a message is applied immediately so a reused row
-    /// never paints an empty fence. Later tokens on the same message stay
-    /// throttled to avoid rebuilding the code view on every chunk. Layout is
-    /// forced without animation: the list's apply is often inside a spring,
-    /// which would otherwise interpolate the code view from a zero frame
-    /// (flicker) and leave it hidden until the next width change.
+    /// Puts the message content on screen. The first fill for a message is
+    /// applied synchronously so a freshly (re)used row never renders blank;
+    /// subsequent updates to the same message stream through the throttled
+    /// path and update the visible content in place.
     func setMarkdownPackage(_ package: MarkdownContent, for messageID: Message.ID) {
-        UIView.performWithoutAnimation {
-            if representedMessageID == messageID {
-                markdownView.setContent(package)
-            } else {
-                representedMessageID = messageID
-                markdownView.setContentImmediately(package, theme: theme)
-            }
-            setNeedsLayout()
-            layoutIfNeeded()
-            installMarkdownFrameAndRelayout()
-        }
-    }
-
-    override func didMoveToWindow() {
-        super.didMoveToWindow()
-        guard window != nil else { return }
-
-        // ListViewKit fills a row before attaching it. Schedule one more pass
-        // after the row joins the window so a fence first built against an
-        // unattached/zero-sized text layout is placed without waiting for a
-        // later window resize.
-        DispatchQueue.main.async { [weak self] in
-            guard let self, self.window != nil else { return }
-            UIView.performWithoutAnimation {
-                self.layoutIfNeeded()
-                self.installMarkdownFrameAndRelayout()
-            }
+        if representedMessageID == messageID {
+            markdownView.setContent(package)
+        } else {
+            representedMessageID = messageID
+            markdownView.setContentImmediately(package)
         }
     }
 
@@ -88,33 +62,7 @@ final class AiMessageView: MessageListRowView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        UIView.performWithoutAnimation {
-            installMarkdownFrameAndRelayout()
-        }
-    }
-
-    /// Sizes the markdown view to the row and places fenced code / table
-    /// views. A fence can be built while the row still has zero width, which
-    /// hides those views; if the list then keeps the same `placedFrame` it
-    /// never asks for another layout, so a width-only window resize was the
-    /// only thing that brought them back.
-    private func installMarkdownFrameAndRelayout() {
-        markdownView.trackedScrollView = nearestScrollView
         markdownView.frame = contentView.bounds
-        let width = contentView.bounds.width
-        guard width > 0 else { return }
-        markdownView.textLabelView.preferredMaxLayoutWidth = width
-        let hasFence = markdownView.textLabelView.attributedText.string.contains("\u{FFFC}")
-        let hasVisibleContext = markdownView.subviews.contains { view in
-            view !== markdownView.textLabelView
-                && !view.isHidden
-                && view.bounds.height > 1
-                && markdownView.bounds.intersects(view.frame)
-        }
-        if hasFence, !hasVisibleContext {
-            markdownView.textLabelView.reloadTextLayout()
-        }
-        markdownView.setNeedsLayout()
-        markdownView.layoutIfNeeded()
+        markdownView.trackedScrollView = nearestScrollView
     }
 }

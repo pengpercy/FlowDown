@@ -121,10 +121,10 @@ final class MessageListView: UIView {
         listView.contentInsetAdjustmentBehavior = .never
         listView.automaticallyAdjustsScrollIndicatorInsets = false
         listView.showsHorizontalScrollIndicator = false
-        // Rows trail the scroll on springs; the content offset itself is
-        // untouched, so the auto-scroll-to-bottom math is unaffected.
-        // Same tuning as AirBuild, by feel.
-        listView.rowAnimator = ListBouncyAnimator(damping: 0.975, frequency: 25.0)
+        // Markdown fenced-code views are positioned during row layout. Do not
+        // displace rows with a per-frame animator: it can show a code view
+        // after the source text layout has changed, leaving it blank until a
+        // later window resize triggers a full layout pass.
         addSubview(listView)
         listView.snp.makeConstraints { make in
             make.edges.equalToSuperview()
@@ -256,22 +256,6 @@ final class MessageListView: UIView {
         listView.apply(entries(from: session.messages), animated: animated)
     }
 
-    /// Streams usually mutate the current assistant entry without changing the
-    /// list's structure. Update that entry directly: a full animated diff puts
-    /// its row into a spring on every token, while MarkdownView is rebuilding
-    /// its fenced-code context view. The single-row path lays the changed row
-    /// out synchronously and keeps the code view stable.
-    private func updateVisibleEntries(_ entries: [Entry]) {
-        guard entries.map(\.id) == listView.content.map(\.id) else {
-            listView.apply(entries, animated: true)
-            return
-        }
-
-        for entry in entries {
-            listView.update(entry)
-        }
-    }
-
     func updateFromUpstreamPublisher(_ messages: [Message], _ scrolling: Bool, isLoading: String?) {
         assert(!Thread.isMainThread)
         #if DEBUG
@@ -306,10 +290,10 @@ final class MessageListView: UIView {
                     }
                 }
             } else {
-                updateVisibleEntries(entries)
+                listView.apply(entries, animated: true)
                 #if DEBUG
                     // TEMP scroll-diag: remove after #2.
-                    Logger.ui.infoFile("[scroll-diag] update shouldScroll=\(shouldScrolling) offset=\(Int(listView.contentOffset.y)) max=\(Int(listView.maximumContentOffset.y))")
+                    Logger.ui.infoFile("[scroll-diag] apply shouldScroll=\(shouldScrolling) offset=\(Int(listView.contentOffset.y)) max=\(Int(listView.maximumContentOffset.y))")
                 #endif
                 if shouldScrolling {
                     listView.scroll(to: listView.maximumContentOffset)

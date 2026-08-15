@@ -1,3 +1,8 @@
+# Disabled on 2026-08-15: the iOS Test workflow has a history of failing
+# independently of product changes. Preserve this definition for rehabilitation,
+# but keep it outside GitHub Actions discovery until it has a reliable suite.
+# Rename this file back to test.yml to re-enable it.
+
 name: Test
 
 # This workflow runs unit tests on pull requests and the online E2E suite
