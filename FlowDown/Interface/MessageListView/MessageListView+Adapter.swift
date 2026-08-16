@@ -103,6 +103,7 @@ extension MessageListView {
                     row.codeBlocksAreExpanded = expandedCodeMessageIDs.contains(messageID)
                     row.codeBlockExpansionHandler = { [weak self] isExpanded in
                         guard let self else { return }
+                        let offsetBeforeToggle = self.listView.contentOffset.y
                         if isExpanded {
                             self.expandedCodeMessageIDs.insert(messageID)
                         } else {
@@ -110,6 +111,23 @@ extension MessageListView {
                         }
                         self.listView.invalidateLayout(forRowWith: entry.id)
                         self.listView.layoutIfNeeded()
+                        if isExpanded {
+                            // The reader tapped a block they are looking at:
+                            // it grows downward. Undo the list's anchor
+                            // compensation so their place stays put instead
+                            // of the block sliding up out from under them.
+                            let rowFrame = self.listView.rectForRow(with: entry.id)
+                            let viewport = CGRect(
+                                origin: self.listView.contentOffset,
+                                size: self.listView.bounds.size
+                            )
+                            if rowFrame.intersects(viewport) {
+                                self.listView.setContentOffset(
+                                    CGPoint(x: 0, y: offsetBeforeToggle),
+                                    animated: false
+                                )
+                            }
+                        }
                     }
                     // The handlers go in before the package: a new message
                     // flushes its content synchronously, and that first sync
