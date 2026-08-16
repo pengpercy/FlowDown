@@ -3,5 +3,5 @@
 	url = https://github.com/Lakr233/ChatClientKit.git
 [submodule "Frameworks/mlx-swift-lm"]
 	path = Frameworks/mlx-swift-lm
-	url = https://github.com/ml-explore/mlx-swift-lm.git
-	branch = main
+	url = https://github.com/pengpercy/mlx-swift-lm.git
+	branch = flowdown
