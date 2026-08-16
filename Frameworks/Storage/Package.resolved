@@ -32,8 +32,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/pengpercy/MarkdownView",
       "state" : {
-        "revision" : "65cc37a6a17fd4be676e5532cfb027b53ffdd1f1",
-        "version" : "4.3.2-flowdown.9"
+        "revision" : "32200b6039edc0ed1b5ba6df80cdfdb116330562",
+        "version" : "4.3.2-flowdown.10"
       }
     },
     {

@@ -58773,6 +58773,98 @@
         }
       },
       "shouldTranslate" : false
+    },
+    "Collapsible Code Blocks" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Collapsible Code Blocks"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einklappbare Codeblöcke"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bloques de código plegables"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Blocs de code repliables"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "コードブロックの折りたたみ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "코드 블록 접기"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "代码块可折叠"
+          }
+        }
+      }
+    },
+    "Collapse long code blocks into a short, scrollable preview that expands on demand. Turn this off to always show code blocks in full." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Collapse long code blocks into a short, scrollable preview that expands on demand. Turn this off to always show code blocks in full."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lange Codeblöcke werden zu einer kurzen, scrollbaren Vorschau eingeklappt, die sich bei Bedarf erweitern lässt. Deaktiviere diese Option, um Codeblöcke immer vollständig anzuzeigen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Contrae los bloques de código largos en una vista previa corta y desplazable que se expande bajo demanda. Desactiva esta opción para mostrar siempre los bloques de código completos."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Réduit les longs blocs de code en un court aperçu défilable qui se déploie à la demande. Désactivez cette option pour toujours afficher les blocs de code en entier."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "長いコードブロックをスクロール可能な短いプレビューに折りたたみ、必要に応じて展開します。オフにすると、コードブロックが常に全体表示されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "긴 코드 블록을 스크롤 가능한 짧은 미리보기로 접고 필요할 때 펼칩니다. 끄면 코드 블록이 항상 전체로 표시됩니다."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将较长的代码块折叠为可滚动的简短预览，可按需展开。关闭后代码块将始终完整显示。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

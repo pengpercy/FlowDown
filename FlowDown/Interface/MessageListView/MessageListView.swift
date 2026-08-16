@@ -149,6 +149,17 @@ final class MessageListView: UIView {
                 updateList()
             }
             .store(in: &viewCancellables)
+        CodeBlockCollapseSetting.collapsibilityDidChange
+            .ensureMainThread()
+            .sink { [weak self] _ in
+                guard let self else { return }
+                // Every stored measurement and every rendered block carries
+                // the old collapsing behavior; start them all over.
+                markdownSizingViewPool.removeAll()
+                listView.reloadData()
+                updateList()
+            }
+            .store(in: &viewCancellables)
     }
 
     @available(*, unavailable)

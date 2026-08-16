@@ -29,6 +29,22 @@ WELCOME_MESSAGE = (
 # Populate this map with explicit translations when introducing new keys.
 # Format: {"Key": {"zh-Hans": "示例", "es": "Ejemplo"}}
 NEW_STRINGS: dict[str, dict[str, str]] = {
+    "Collapsible Code Blocks": {
+        "de": "Einklappbare Codeblöcke",
+        "es": "Bloques de código plegables",
+        "fr": "Blocs de code repliables",
+        "ja": "コードブロックの折りたたみ",
+        "ko": "코드 블록 접기",
+        "zh-Hans": "代码块可折叠",
+    },
+    "Collapse long code blocks into a short, scrollable preview that expands on demand. Turn this off to always show code blocks in full.": {
+        "de": "Lange Codeblöcke werden zu einer kurzen, scrollbaren Vorschau eingeklappt, die sich bei Bedarf erweitern lässt. Deaktiviere diese Option, um Codeblöcke immer vollständig anzuzeigen.",
+        "es": "Contrae los bloques de código largos en una vista previa corta y desplazable que se expande bajo demanda. Desactiva esta opción para mostrar siempre los bloques de código completos.",
+        "fr": "Réduit les longs blocs de code en un court aperçu défilable qui se déploie à la demande. Désactivez cette option pour toujours afficher les blocs de code en entier.",
+        "ja": "長いコードブロックをスクロール可能な短いプレビューに折りたたみ、必要に応じて展開します。オフにすると、コードブロックが常に全体表示されます。",
+        "ko": "긴 코드 블록을 스크롤 가능한 짧은 미리보기로 접고 필요할 때 펼칩니다. 끄면 코드 블록이 항상 전체로 표시됩니다.",
+        "zh-Hans": "将较长的代码块折叠为可滚动的简短预览，可按需展开。关闭后代码块将始终完整显示。",
+    },
     "Authorization (Optional)": {
         "de": "Autorisierung (optional)",
         "es": "Autorización (opcional)",
