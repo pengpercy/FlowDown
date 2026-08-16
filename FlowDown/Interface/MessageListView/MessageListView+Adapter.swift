@@ -531,7 +531,7 @@ extension MessageListView {
             controller.title = title
         }
 
-        let size = ModalWindowSize.resolve(in: parentViewController?.view.window ?? ModalWindowSize.keyWindow)
+        let size = ModalWindowSize.resolve(in: parentViewController?.view.window)
         #if targetEnvironment(macCatalyst)
             let nav = UINavigationController(rootViewController: controller)
             nav.view.backgroundColor = .background
@@ -544,7 +544,7 @@ extension MessageListView {
             holder.shouldDismissWhenEscapeKeyPressed = true
         #else
             let holder = UINavigationController(rootViewController: controller)
-            holder.preferredContentSize = .init(width: size.width, height: size.height - holder.navigationBar.frame.height)
+            holder.preferredContentSize = .init(width: 555, height: 555 - holder.navigationBar.frame.height)
             holder.modalTransitionStyle = .coverVertical
             holder.modalPresentationStyle = .formSheet
             holder.view.backgroundColor = .background
