@@ -15,10 +15,6 @@ on:
       - "Package.resolved"
 
 jobs:
-  # Deliberately not skipped for housekeeping/ branches: those PRs regenerate
-  # Package.resolved and are exactly where pin drift gets introduced. Xcode
-  # Cloud is the only other place that catches it, and there it fails a release
-  # archive instead of a pull request.
   verify-packages:
     name: Verify Package Pins
     runs-on: macos-26
@@ -30,7 +26,6 @@ jobs:
         run: make package-verify
 
   build:
-    if: ${{ !startsWith(github.head_ref, 'housekeeping/') }}
     name: Build (${{ matrix.target }})
     runs-on: macos-26
     strategy:
