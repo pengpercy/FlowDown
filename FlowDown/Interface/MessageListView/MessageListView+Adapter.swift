@@ -111,7 +111,11 @@ extension MessageListView {
                         self.listView.invalidateLayout(forRowWith: entry.id)
                         self.listView.layoutIfNeeded()
                     }
-                    row.setMarkdownPackage(package, for: messageID)
+                    // The handlers go in before the package: a new message
+                    // flushes its content synchronously, and that first sync
+                    // hands the code views whatever preview handler is set at
+                    // the time — installed afterwards, their eye button stays
+                    // hidden until a later rebuild happens to sync it again.
                     row.linkTapHandler = { [weak self, weak row] link, range, touchLocation in
                         guard let self, let row else { return }
                         handleLinkTapped(link, in: range, at: row.convert(touchLocation, to: self))
@@ -123,6 +127,7 @@ extension MessageListView {
                             title: String(localized: "Code Viewer"),
                         )
                     }
+                    row.setMarkdownPackage(package, for: messageID)
                 }
 
             ListRow(HintMessageView.self)
