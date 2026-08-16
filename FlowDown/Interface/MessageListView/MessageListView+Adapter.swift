@@ -89,7 +89,7 @@ extension MessageListView {
                         let sizingView = self.markdownSizingViewPool.view(
                             for: message,
                             theme: self.theme,
-                            codeBlocksAreExpanded: self.expandedCodeMessageIDs.contains(message.id),
+                            expandedCodeBlocks: self.expandedCodeBlocks[message.id] ?? [],
                         ) {
                             self.markdownPackageCache.package(for: message, theme: self.theme)
                         }
@@ -100,14 +100,17 @@ extension MessageListView {
                     guard let self, case let .aiContent(messageID, message) = entry else { return }
                     prepare(row, for: entry)
                     let package = markdownPackageCache.package(for: message, theme: theme)
-                    row.codeBlocksAreExpanded = expandedCodeMessageIDs.contains(messageID)
-                    row.codeBlockExpansionHandler = { [weak self] isExpanded in
+                    row.codeExpandedBlocks = expandedCodeBlocks[messageID] ?? []
+                    row.codeBlockExpansionHandler = { [weak self] blockIndex, isExpanded in
                         guard let self else { return }
                         let offsetBeforeToggle = self.listView.contentOffset.y
                         if isExpanded {
-                            self.expandedCodeMessageIDs.insert(messageID)
+                            self.expandedCodeBlocks[messageID, default: []].insert(blockIndex)
                         } else {
-                            self.expandedCodeMessageIDs.remove(messageID)
+                            self.expandedCodeBlocks[messageID]?.remove(blockIndex)
+                            if self.expandedCodeBlocks[messageID]?.isEmpty == true {
+                                self.expandedCodeBlocks[messageID] = nil
+                            }
                         }
                         self.listView.invalidateLayout(forRowWith: entry.id)
                         self.listView.layoutIfNeeded()
