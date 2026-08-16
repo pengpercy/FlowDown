@@ -158,17 +158,17 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/pengpercy/MarkdownView",
       "state" : {
-        "revision" : "12445adbb5ac0d347c5fc9f64e5f65b3f465af82",
-        "version" : "4.3.2-flowdown.7"
+        "revision" : "42dbfcaa4b31fd0dd4956c65a3aaec9d8dcab186",
+        "version" : "4.3.2-flowdown.8"
       }
     },
     {
       "identity" : "mlx-swift",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/ml-explore/mlx-swift",
+      "location" : "https://github.com/pengpercy/mlx-swift",
       "state" : {
-        "revision" : "0bb916c67f4b9e5c682cbe02a42c701c93ab5021",
-        "version" : "0.31.6"
+        "revision" : "5fd044b232a121a9c6e81ecb289b72620c39f202",
+        "version" : "0.31.6-flowdown.1"
       }
     },
     {
@@ -246,10 +246,10 @@
     {
       "identity" : "swift-cmark",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/swiftlang/swift-cmark",
+      "location" : "https://github.com/pengpercy/swift-cmark",
       "state" : {
-        "revision" : "924936d0427cb25a61169739a7660230bffa6ea6",
-        "version" : "0.8.0"
+        "revision" : "ea480a447a8cebcbace575265121e19caf79a039",
+        "version" : "0.8.0-flowdown.2"
       }
     },
     {
