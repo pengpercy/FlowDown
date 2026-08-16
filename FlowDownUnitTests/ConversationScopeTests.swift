@@ -52,4 +52,38 @@ struct ConversationScopeTests {
 
         #expect(normalized == "✅")
     }
+
+    @Test
+    func `plain text metadata parser reads a json object`() {
+        let metadata = ConversationMetadataPlainTextParser.parse(
+            #"Here you go: {"title": "Kyoto trip plan", "icon": "⛩️"}"#,
+        )
+
+        #expect(metadata == ConversationMetadata(title: "Kyoto trip plan", icon: "⛩️"))
+    }
+
+    @Test
+    func `plain text metadata parser reads labeled lines`() {
+        let response = """
+        title: Swift concurrency help
+        icon: 🧵
+        """
+
+        let metadata = ConversationMetadataPlainTextParser.parse(response)
+
+        #expect(metadata == ConversationMetadata(title: "Swift concurrency help", icon: "🧵"))
+    }
+
+    @Test
+    func `plain text metadata parser falls back to the first line`() {
+        let metadata = ConversationMetadataPlainTextParser.parse("Budget review notes")
+
+        #expect(metadata == ConversationMetadata(title: "Budget review notes", icon: nil))
+    }
+
+    @Test
+    func `plain text metadata parser rejects empty responses`() {
+        #expect(ConversationMetadataPlainTextParser.parse("") == nil)
+        #expect(ConversationMetadataPlainTextParser.parse("   \n  ") == nil)
+    }
 }
