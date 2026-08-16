@@ -66,7 +66,7 @@ jobs:
           ./Resources/DevKit/scripts/notary-action.sh "$GITHUB_OUTPUT"
       - name: Upload build outputs
         if: steps.tag_check.outputs.ok == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: FlowDown-${{ env.VERSION }}-build-pre-notarize
           path: |
@@ -100,7 +100,7 @@ jobs:
           gh release upload "${VERSION}" "$ZIP_PATH#FlowDown-${VERSION}.zip" --clobber
       - name: Upload notarized ZIP as artifact
         if: steps.tag_check.outputs.ok == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: FlowDown-${{ env.VERSION }}-notarized-zip
           path: ${{ steps.notarize_action.outputs.zip_path }}

@@ -24,7 +24,7 @@ jobs:
     runs-on: macos-26
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Check Required Pins
         run: make package-verify
@@ -47,7 +47,7 @@ jobs:
             archive_path: BuildArtifacts/macos.xcarchive
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: recursive
 
@@ -97,7 +97,7 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent "${{ matrix.archive_path }}" "BuildArtifacts/${{ matrix.target }}.xcarchive.zip"
 
       - name: Upload Build Artifact (${{ matrix.target }})
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ${{ matrix.target }}-xcresult
           path: BuildArtifacts/${{ matrix.target }}.xcresult
@@ -105,7 +105,7 @@ jobs:
           retention-days: 7
 
       - name: Upload Archive Artifact (${{ matrix.target }})
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ${{ matrix.target }}-xcarchive
           path: BuildArtifacts/${{ matrix.target }}.xcarchive.zip
