@@ -55,7 +55,7 @@ extension ConversationSelectionView {
             $0.translatesAutoresizingMaskIntoConstraints = false
         }
 
-        private var leadingConstraint: Constraint?
+        private var stackLeadingConstraint: Constraint?
 
         override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
             super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -80,7 +80,7 @@ extension ConversationSelectionView {
             stack.snp.makeConstraints { make in
                 make.top.bottom.equalToSuperview().inset(16)
                 make.right.equalToSuperview().inset(24)
-                leadingConstraint = make.left.equalToSuperview().inset(24).constraint
+                stackLeadingConstraint = make.left.equalToSuperview().inset(24).constraint
             }
 
             contentView.isUserInteractionEnabled = true
@@ -105,7 +105,7 @@ extension ConversationSelectionView {
             item = conv.map { .conversation($0.id) }
             chevronView.isHidden = true
             countLabel.isHidden = true
-            leadingConstraint?.update(offset: indented ? 52 : 24)
+            stackLeadingConstraint?.update(offset: indented ? 52 : 24)
             guard let conv else {
                 titleLabel.text = nil
                 iconView.image = UIImage(systemName: "doc.text")
@@ -118,7 +118,7 @@ extension ConversationSelectionView {
         func use(folder: ConversationFolder?, expanded: Bool, count: Int) {
             let previousItem = item
             item = folder.map { .folder($0.id) }
-            leadingConstraint?.update(offset: 24)
+            stackLeadingConstraint?.update(offset: 24)
             chevronView.isHidden = false
             countLabel.isHidden = false
             countLabel.text = count > 0 ? "\(count)" : nil
