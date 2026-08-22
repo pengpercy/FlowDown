@@ -29,6 +29,38 @@ WELCOME_MESSAGE = (
 # Populate this map with explicit translations when introducing new keys.
 # Format: {"Key": {"zh-Hans": "示例", "es": "Ejemplo"}}
 NEW_STRINGS: dict[str, dict[str, str]] = {
+    "New Folder": {
+        "de": "Neuer Ordner",
+        "es": "Nueva carpeta",
+        "fr": "Nouveau dossier",
+        "ja": "新規フォルダ",
+        "ko": "새 폴더",
+        "zh-Hans": "新建文件夹",
+    },
+    "Folder Name": {
+        "de": "Ordnername",
+        "es": "Nombre de la carpeta",
+        "fr": "Nom du dossier",
+        "ja": "フォルダ名",
+        "ko": "폴더 이름",
+        "zh-Hans": "文件夹名称",
+    },
+    "Create a folder for this conversation.": {
+        "de": "Erstellen Sie einen Ordner fuer diese Unterhaltung.",
+        "es": "Crea una carpeta para esta conversación.",
+        "fr": "Créez un dossier pour cette conversation.",
+        "ja": "この会話用のフォルダを作成します。",
+        "ko": "이 대화를 위한 폴더를 만드세요.",
+        "zh-Hans": "为此对话创建一个文件夹。",
+    },
+    "Create an empty folder for conversations.": {
+        "de": "Erstellen Sie einen leeren Ordner fuer Unterhaltungen.",
+        "es": "Crea una carpeta vacía para conversaciones.",
+        "fr": "Créez un dossier vide pour les conversations.",
+        "ja": "会話用の空のフォルダを作成します。",
+        "ko": "대화를 위한 빈 폴더를 만드세요.",
+        "zh-Hans": "创建一个用于存放对话的空文件夹。",
+    },
     "Collapsible Code Blocks": {
         "de": "Einklappbare Codeblöcke",
         "es": "Bloques de código plegables",

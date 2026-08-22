@@ -74,7 +74,7 @@ extension ConversationSelectionView {
 
         private var conversationIdentifier: Conversation.ID?
 
-        func use(_ conv: Conversation?) {
+        func use(conversation conv: Conversation?) {
             conversationIdentifier = conv?.id
             guard let conv else {
                 titleLabel.text = nil
@@ -83,6 +83,12 @@ extension ConversationSelectionView {
             }
             titleLabel.text = conv.title
             iconView.image = conv.interfaceImage
+        }
+
+        func use(folder: ConversationFolder?) {
+            conversationIdentifier = nil
+            titleLabel.text = folder?.title
+            iconView.image = UIImage(systemName: "folder")
         }
 
         func contextMenuInteraction(
@@ -95,6 +101,7 @@ extension ConversationSelectionView {
                 guard let self else { return nil }
                 return ConversationManager.shared.menu(
                     forConversation: conversationIdentifier,
+                    selectedConversations: self.selectedConversationIdentifiers,
                     view: self,
                 )
             }
@@ -115,6 +122,22 @@ extension ConversationSelectionView {
                 view = v.superview
             }
             return nil
+        }
+
+        private var selectedConversationIdentifiers: [Conversation.ID] {
+            var view: UIView? = superview
+            while let current = view {
+                if let selectionView = current as? ConversationSelectionView {
+                    return selectionView.tableView.indexPathsForSelectedRows?
+                        .compactMap { selectionView.dataSource.itemIdentifier(for: $0) }
+                        .compactMap { item -> Conversation.ID? in
+                            guard case let .conversation(identifier) = item else { return nil }
+                            return identifier
+                        } ?? []
+                }
+                view = current.superview
+            }
+            return []
         }
     }
 }

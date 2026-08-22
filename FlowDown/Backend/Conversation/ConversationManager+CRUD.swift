@@ -17,6 +17,26 @@ extension ConversationManager {
         // Cannot convert value of type '[Conversation]' to expected argument type 'OrderedDictionary<Conversation.ID, Conversation>' (aka 'OrderedDictionary<Int64, Conversation>')
         let dic = OrderedDictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
         conversations.send(dic)
+        folders.send(sdb.conversationFolderList())
+        folderMemberships.send(sdb.conversationFolderMemberships())
+    }
+
+    @discardableResult
+    func createFolder(title: String = String(localized: "New Folder"), conversations identifiers: [Conversation.ID] = []) -> ConversationFolder {
+        let folder = sdb.conversationFolderMake(title: title)
+        sdb.conversationAssign(identifiers, toFolder: folder.id)
+        scanAll()
+        return folder
+    }
+
+    func moveConversations(_ identifiers: [Conversation.ID], toFolder folderId: ConversationFolder.ID?) {
+        sdb.conversationAssign(identifiers, toFolder: folderId)
+        scanAll()
+    }
+
+    func deleteFolder(identifier: ConversationFolder.ID) {
+        sdb.conversationFolderRemove(identifier: identifier)
+        scanAll()
     }
 
     func initialConversation() -> Conversation {
@@ -125,6 +145,7 @@ extension ConversationManager {
         let session = ConversationSessionManager.shared.session(for: identifier)
         session.cancelCurrentTask {}
         sdb.conversationRemove(conversationWith: identifier)
+        sdb.conversationAssign([identifier], toFolder: nil)
         try? Storage.db().deleteSummary(forConversation: identifier.description)
         setRichEditorObject(identifier: identifier, nil)
         scanAll()

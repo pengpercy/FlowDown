@@ -1,4 +1,5 @@
 @testable import FlowDown
+import Storage
 import Testing
 
 struct StorageScopeTests {
@@ -13,5 +14,13 @@ struct StorageScopeTests {
         for error in cases {
             #expect(!(error.errorDescription ?? "").isEmpty)
         }
+    }
+
+    @Test
+    func `conversation folder membership retains its conversation and folder identifiers`() {
+        let membership = ConversationFolderMembership(conversationId: "conversation-id", folderId: "folder-id")
+
+        #expect(membership.conversationId == "conversation-id")
+        #expect(membership.folderId == "folder-id")
     }
 }

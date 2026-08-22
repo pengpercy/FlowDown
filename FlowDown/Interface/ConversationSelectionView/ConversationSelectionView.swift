@@ -26,8 +26,15 @@ class ConversationSelectionView: UIView {
 
     var cancellables: Set<AnyCancellable> = []
 
-    typealias DataIdentifier = Conversation.ID
-    typealias SectionIdentifier = Date
+    enum DataIdentifier: Hashable {
+        case conversation(Conversation.ID)
+        case folder(ConversationFolder.ID)
+    }
+
+    enum SectionIdentifier: Hashable {
+        case folder(ConversationFolder.ID)
+        case date(Date)
+    }
 
     typealias DataSource = UITableViewDiffableDataSource<SectionIdentifier, DataIdentifier>
     typealias Snapshot = NSDiffableDataSourceSnapshot<SectionIdentifier, DataIdentifier>
@@ -39,8 +46,12 @@ class ConversationSelectionView: UIView {
         dataSource = .init(tableView: tableView) { tableView, indexPath, itemIdentifier in
             tableView.separatorColor = .clear
             let cell = tableView.dequeueReusableCell(withIdentifier: "Cell", for: indexPath) as! Cell
-            let conv = ConversationManager.shared.conversation(identifier: itemIdentifier)
-            cell.use(conv)
+            switch itemIdentifier {
+            case let .conversation(identifier):
+                cell.use(conversation: ConversationManager.shared.conversation(identifier: identifier))
+            case let .folder(identifier):
+                cell.use(folder: ConversationManager.shared.folders.value.first { $0.id == identifier })
+            }
             return cell
         }
         dataSource.defaultRowAnimation = .fade
@@ -55,11 +66,14 @@ class ConversationSelectionView: UIView {
         }
 
         tableView.delegate = self
+        tableView.dragDelegate = self
+        tableView.dropDelegate = self
+        tableView.dragInteractionEnabled = true
         tableView.separatorStyle = .none
         tableView.separatorInset = .zero
         tableView.separatorColor = .clear
         tableView.contentInset = .zero
-        tableView.allowsMultipleSelection = false
+        tableView.allowsMultipleSelection = true
         tableView.selectionFollowsFocus = true
         tableView.backgroundColor = .clear
         tableView.showsVerticalScrollIndicator = false
@@ -69,13 +83,14 @@ class ConversationSelectionView: UIView {
 
         updateDataSource()
 
-        Publishers.CombineLatest(
+        Publishers.CombineLatest3(
             ConversationManager.shared.conversations,
             ChatSelection.shared.selection,
+            ConversationManager.shared.folders.combineLatest(ConversationManager.shared.folderMemberships),
         )
         .debounce(for: .milliseconds(16), scheduler: DispatchQueue.main)
         .ensureMainThread()
-        .sink { [weak self] _, selection in
+        .sink { [weak self] _, selection, _ in
             guard let self else { return }
             updateDataSource()
             let identifier = selection.identifier
@@ -91,12 +106,8 @@ class ConversationSelectionView: UIView {
                 }
             }()
             Logger.ui.debugFile("ConversationSelectionView received global selection: \(identifier ?? "nil") options: \(optionDescription)")
-            let selectedIndexPath = Set(tableView.indexPathsForSelectedRows ?? [])
-            for index in selectedIndexPath {
-                tableView.deselectRow(at: index, animated: false)
-            }
             if let identifier,
-               let indexPath = dataSource.indexPath(for: identifier)
+               let indexPath = dataSource.indexPath(for: .conversation(identifier))
             {
                 let visible = tableView.indexPathsForVisibleRows?.contains(indexPath) ?? false
                 tableView.selectRow(
@@ -133,17 +144,33 @@ class ConversationSelectionView: UIView {
 
         var snapshot = Snapshot()
 
-        let favorited = list.filter(\.isFavorite)
+        let memberships = ConversationManager.shared.folderMemberships.value
+        let folders = ConversationManager.shared.folders.value
+        let unfiled = list.filter { memberships[$0.id] == nil }
+
+        for folder in folders {
+            let section = SectionIdentifier.folder(folder.id)
+            snapshot.appendSections([section])
+            snapshot.appendItems([.folder(folder.id)], toSection: section)
+            if expandedFolderIds.contains(folder.id) {
+                snapshot.appendItems(
+                    list.filter { memberships[$0.id] == folder.id }.map { .conversation($0.id) },
+                    toSection: section,
+                )
+            }
+        }
+
+        let favorited = unfiled.filter(\.isFavorite)
         if !favorited.isEmpty {
-            let favoriteSection = Date(timeIntervalSince1970: -1)
+            let favoriteSection = SectionIdentifier.date(Date(timeIntervalSince1970: -1))
             snapshot.appendSections([favoriteSection])
-            snapshot.appendItems(favorited.map(\.id), toSection: favoriteSection)
+            snapshot.appendItems(favorited.map { .conversation($0.id) }, toSection: favoriteSection)
         }
 
         let calendar = Calendar.current
 
         var conversationsByDate: [Date: [Conversation.ID]] = [:]
-        for item in list where !item.isFavorite {
+        for item in unfiled where !item.isFavorite {
             let dateOnly = calendar.startOfDay(for: item.creation)
             if conversationsByDate[dateOnly] == nil {
                 conversationsByDate[dateOnly] = []
@@ -154,15 +181,16 @@ class ConversationSelectionView: UIView {
         let sortedDates = conversationsByDate.keys.sorted(by: >)
 
         for date in sortedDates {
-            snapshot.appendSections([date])
+            let section = SectionIdentifier.date(date)
+            snapshot.appendSections([section])
             if let conversations = conversationsByDate[date] {
-                snapshot.appendItems(conversations, toSection: date)
+                snapshot.appendItems(conversations.map { .conversation($0) }, toSection: section)
             }
         }
         let previousSections = dataSource.snapshot().sectionIdentifiers
         if previousSections.count == 1, sortedDates.count > 1 {
             // reload all!
-            snapshot.reloadSections(sortedDates)
+            snapshot.reloadSections(sortedDates.map { .date($0) })
         }
 
         dataSource.apply(snapshot, animatingDifferences: true)
@@ -171,8 +199,11 @@ class ConversationSelectionView: UIView {
             var snapshot = dataSource.snapshot()
             let visibleRows = tableView.indexPathsForVisibleRows ?? []
             let visibleItemIdentifiers = visibleRows
-                .map { dataSource.itemIdentifier(for: $0) }
-                .compactMap(\.self)
+                .compactMap { dataSource.itemIdentifier(for: $0) }
+                .filter {
+                    if case .conversation = $0 { return true }
+                    return false
+                }
             snapshot.reconfigureItems(visibleItemIdentifiers)
             dataSource.apply(snapshot, animatingDifferences: true)
         }
@@ -212,12 +243,14 @@ class ConversationSelectionView: UIView {
                 continue
             }
             let indexPath = IndexPath(item: sectionItemIndex, section: sectionIndex)
-            let identifier = dataSource.itemIdentifier(for: indexPath)
-            ChatSelection.shared.select(identifier)
+            guard let identifier = dataSource.itemIdentifier(for: indexPath), case let .conversation(conversationId) = identifier else { continue }
+            ChatSelection.shared.select(conversationId)
             resolved = true
         }
         if !resolved {
             super.pressesBegan(presses, with: event)
         }
     }
+
+    var expandedFolderIds = Set<ConversationFolder.ID>()
 }

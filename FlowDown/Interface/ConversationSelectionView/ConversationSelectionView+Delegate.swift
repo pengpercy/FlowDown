@@ -10,13 +10,23 @@ import UIKit
 
 extension ConversationSelectionView: UITableViewDelegate {
     func tableView(_: UITableView, didSelectRowAt indexPath: IndexPath) {
-        guard let identifier = dataSource.itemIdentifier(for: indexPath) else { return }
-        Logger.ui.debugFile("ConversationSelectionView didSelectRowAt: \(identifier)")
-        ChatSelection.shared.select(identifier, options: [.collapseSidebar])
+        guard let item = dataSource.itemIdentifier(for: indexPath) else { return }
+        switch item {
+        case let .conversation(identifier):
+            Logger.ui.debugFile("ConversationSelectionView didSelectRowAt: \(identifier)")
+            ChatSelection.shared.select(identifier, options: [.collapseSidebar])
+        case let .folder(identifier):
+            if expandedFolderIds.contains(identifier) {
+                expandedFolderIds.remove(identifier)
+            } else {
+                expandedFolderIds.insert(identifier)
+            }
+            updateDataSource()
+        }
     }
 
     func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
-        guard let identifier = dataSource.itemIdentifier(for: indexPath) else { return nil }
+        guard let item = dataSource.itemIdentifier(for: indexPath), case let .conversation(identifier) = item else { return nil }
 
         let duplicateAction = UIContextualAction(style: .normal, title: nil) { _, _, completion in
             if let duplicatedId = ConversationManager.shared.duplicateConversation(identifier: identifier) {
@@ -33,7 +43,10 @@ extension ConversationSelectionView: UITableViewDelegate {
             }
 
             let snapshot = dataSource.snapshot()
-            let identifiers = snapshot.itemIdentifiers
+            let identifiers = snapshot.itemIdentifiers.compactMap { item -> Conversation.ID? in
+                guard case let .conversation(identifier) = item else { return nil }
+                return identifier
+            }
             let currentSelectionIndex = identifiers.firstIndex(of: identifier)
             let isDeletingSelectedRow = tableView.indexPathForSelectedRow == indexPath
 
@@ -60,7 +73,7 @@ extension ConversationSelectionView: UITableViewDelegate {
     }
 
     func tableView(_: UITableView, leadingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
-        guard let identifier = dataSource.itemIdentifier(for: indexPath),
+        guard let item = dataSource.itemIdentifier(for: indexPath), case let .conversation(identifier) = item,
               let conversation = ConversationManager.shared.conversation(identifier: identifier)
         else { return nil }
 
@@ -83,7 +96,7 @@ extension ConversationSelectionView: UITableViewDelegate {
 
     func tableView(_: UITableView, viewForHeaderInSection section: Int) -> UIView? {
         guard dataSource.snapshot().numberOfSections > 1 else { return nil }
-        let sectionIdentifier = dataSource.snapshot().sectionIdentifiers[section]
+        guard case let .date(sectionIdentifier) = dataSource.snapshot().sectionIdentifiers[section] else { return nil }
         return SectionDateHeaderView().with {
             $0.updateTitle(date: sectionIdentifier)
         }

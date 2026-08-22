@@ -721,3 +721,15 @@ struct MigrationV5ToV6: DBMigration {
         Logger.database.infoFile("[*] migrate version \(fromVersion.rawValue) -> \(toVersion.rawValue) end elapsed \(Int(elapsed))ms")
     }
 }
+
+struct MigrationV6ToV7: DBMigration {
+    let fromVersion: DBVersion = .Version6
+    let toVersion: DBVersion = .Version7
+    let requiresDataMigration: Bool = false
+
+    func migrate(db: Database) throws {
+        try db.create(table: ConversationFolder.tableName, of: ConversationFolder.self)
+        try db.create(table: ConversationFolderMembership.tableName, of: ConversationFolderMembership.self)
+        try db.exec(StatementPragma().pragma(.userVersion).to(toVersion.rawValue))
+    }
+}

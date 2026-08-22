@@ -32,6 +32,8 @@ class ConversationManager: NSObject {
     }
 
     let conversations: CurrentValueSubject<OrderedDictionary<Conversation.ID, Conversation>, Never> = .init([:])
+    let folders: CurrentValueSubject<[ConversationFolder], Never> = .init([])
+    let folderMemberships: CurrentValueSubject<[Conversation.ID: ConversationFolder.ID], Never> = .init([:])
 
     private var cancellables = Set<AnyCancellable>()
 
