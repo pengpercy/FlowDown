@@ -39,6 +39,14 @@ class ConversationSelectionView: UIView {
     typealias DataSource = UITableViewDiffableDataSource<SectionIdentifier, DataIdentifier>
     typealias Snapshot = NSDiffableDataSourceSnapshot<SectionIdentifier, DataIdentifier>
 
+    private static let expandedFolderIdsDefaultsKey = "ConversationSelectionView.expandedFolderIds"
+
+    var expandedFolderIds: Set<ConversationFolder.ID> = [] {
+        didSet {
+            UserDefaults.standard.set(Array(expandedFolderIds), forKey: Self.expandedFolderIdsDefaultsKey)
+        }
+    }
+
     init() {
         tableView = GroundedTableView(frame: .zero, style: .plain)
         tableView.register(Cell.self, forCellReuseIdentifier: "Cell")
@@ -48,9 +56,17 @@ class ConversationSelectionView: UIView {
             let cell = tableView.dequeueReusableCell(withIdentifier: "Cell", for: indexPath) as! Cell
             switch itemIdentifier {
             case let .conversation(identifier):
-                cell.use(conversation: ConversationManager.shared.conversation(identifier: identifier))
+                let conversation = ConversationManager.shared.conversation(identifier: identifier)
+                let isFiled = ConversationManager.shared.folderMemberships.value[identifier] != nil
+                cell.use(conversation: conversation, indented: isFiled)
             case let .folder(identifier):
-                cell.use(folder: ConversationManager.shared.folders.value.first { $0.id == identifier })
+                let manager = ConversationManager.shared
+                let count = manager.folderMemberships.value.values.filter { $0 == identifier }.count
+                cell.use(
+                    folder: manager.folders.value.first { $0.id == identifier },
+                    expanded: (tableView.delegate as? ConversationSelectionView)?.expandedFolderIds.contains(identifier) ?? false,
+                    count: count,
+                )
             }
             return cell
         }
@@ -73,7 +89,7 @@ class ConversationSelectionView: UIView {
         tableView.separatorInset = .zero
         tableView.separatorColor = .clear
         tableView.contentInset = .zero
-        tableView.allowsMultipleSelection = true
+        tableView.allowsMultipleSelection = false
         tableView.selectionFollowsFocus = true
         tableView.backgroundColor = .clear
         tableView.showsVerticalScrollIndicator = false
@@ -81,16 +97,21 @@ class ConversationSelectionView: UIView {
         tableView.sectionHeaderTopPadding = 0
         tableView.sectionHeaderHeight = UITableView.automaticDimension
 
+        if let persisted = UserDefaults.standard.array(forKey: Self.expandedFolderIdsDefaultsKey) as? [String] {
+            expandedFolderIds = Set(persisted)
+        }
+
         updateDataSource()
 
-        Publishers.CombineLatest3(
+        Publishers.CombineLatest4(
             ConversationManager.shared.conversations,
             ChatSelection.shared.selection,
-            ConversationManager.shared.folders.combineLatest(ConversationManager.shared.folderMemberships),
+            ConversationManager.shared.folders,
+            ConversationManager.shared.folderMemberships,
         )
         .debounce(for: .milliseconds(16), scheduler: DispatchQueue.main)
         .ensureMainThread()
-        .sink { [weak self] _, selection, _ in
+        .sink { [weak self] _, selection, _, _ in
             guard let self else { return }
             updateDataSource()
             let identifier = selection.identifier
@@ -106,6 +127,9 @@ class ConversationSelectionView: UIView {
                 }
             }()
             Logger.ui.debugFile("ConversationSelectionView received global selection: \(identifier ?? "nil") options: \(optionDescription)")
+            for indexPath in tableView.indexPathsForSelectedRows ?? [] {
+                tableView.deselectRow(at: indexPath, animated: false)
+            }
             if let identifier,
                let indexPath = dataSource.indexPath(for: .conversation(identifier))
             {
@@ -115,10 +139,12 @@ class ConversationSelectionView: UIView {
                     animated: false,
                     scrollPosition: visible ? .none : .middle,
                 )
-            } else if dataSource.numberOfSections(in: tableView) > 0,
-                      dataSource.tableView(tableView, numberOfRowsInSection: 0) > 0
+            } else if let firstConversation = dataSource.snapshot().itemIdentifiers.first(where: {
+                if case .conversation = $0 { return true }
+                return false
+            }),
+                let indexPath = dataSource.indexPath(for: firstConversation)
             {
-                let indexPath = IndexPath(row: 0, section: 0)
                 let visible = tableView.indexPathsForVisibleRows?.contains(indexPath) ?? false
                 tableView.selectRow(
                     at: indexPath,
@@ -146,6 +172,7 @@ class ConversationSelectionView: UIView {
 
         let memberships = ConversationManager.shared.folderMemberships.value
         let folders = ConversationManager.shared.folders.value
+        expandedFolderIds.formIntersection(folders.map(\.id))
         let unfiled = list.filter { memberships[$0.id] == nil }
 
         for folder in folders {
@@ -200,13 +227,28 @@ class ConversationSelectionView: UIView {
             let visibleRows = tableView.indexPathsForVisibleRows ?? []
             let visibleItemIdentifiers = visibleRows
                 .compactMap { dataSource.itemIdentifier(for: $0) }
-                .filter {
-                    if case .conversation = $0 { return true }
-                    return false
-                }
             snapshot.reconfigureItems(visibleItemIdentifiers)
             dataSource.apply(snapshot, animatingDifferences: true)
         }
+    }
+
+    func toggleFolder(_ identifier: ConversationFolder.ID) {
+        if expandedFolderIds.contains(identifier) {
+            expandedFolderIds.remove(identifier)
+        } else {
+            expandedFolderIds.insert(identifier)
+        }
+        updateDataSource()
+        // Reconfigure the folder row so its chevron reflects the new state;
+        // the cell animates the rotation itself.
+        var snapshot = dataSource.snapshot()
+        snapshot.reconfigureItems([.folder(identifier)])
+        dataSource.apply(snapshot, animatingDifferences: false)
+    }
+
+    func expandFolder(_ identifier: ConversationFolder.ID) {
+        guard !expandedFolderIds.contains(identifier) else { return }
+        toggleFolder(identifier)
     }
 
     override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
@@ -251,6 +293,4 @@ class ConversationSelectionView: UIView {
             super.pressesBegan(presses, with: event)
         }
     }
-
-    var expandedFolderIds = Set<ConversationFolder.ID>()
 }

@@ -16,12 +16,7 @@ extension ConversationSelectionView: UITableViewDelegate {
             Logger.ui.debugFile("ConversationSelectionView didSelectRowAt: \(identifier)")
             ChatSelection.shared.select(identifier, options: [.collapseSidebar])
         case let .folder(identifier):
-            if expandedFolderIds.contains(identifier) {
-                expandedFolderIds.remove(identifier)
-            } else {
-                expandedFolderIds.insert(identifier)
-            }
-            updateDataSource()
+            toggleFolder(identifier)
         }
     }
 
