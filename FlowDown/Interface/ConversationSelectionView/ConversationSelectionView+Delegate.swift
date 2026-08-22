@@ -16,6 +16,9 @@ extension ConversationSelectionView: UITableViewDelegate {
             Logger.ui.debugFile("ConversationSelectionView didSelectRowAt: \(identifier)")
             ChatSelection.shared.select(identifier, options: [.collapseSidebar])
         case let .folder(identifier):
+            // Keep the highlight off folder rows so every tap starts from an
+            // unselected row and reliably re-triggers this delegate call.
+            tableView.deselectRow(at: indexPath, animated: true)
             toggleFolder(identifier)
         }
     }
@@ -90,10 +93,27 @@ extension ConversationSelectionView: UITableViewDelegate {
     }
 
     func tableView(_: UITableView, viewForHeaderInSection section: Int) -> UIView? {
-        guard dataSource.snapshot().numberOfSections > 1 else { return nil }
-        guard case let .date(sectionIdentifier) = dataSource.snapshot().sectionIdentifiers[section] else { return nil }
+        let sectionIdentifiers = dataSource.snapshot().sectionIdentifiers
+        let datedSectionCount = sectionIdentifiers.filter {
+            if case .date = $0 { return true }
+            return false
+        }.count
+        // Folder sections never show a header, and their presence alone should
+        // not bring back the date headers hidden in single-section lists.
+        guard datedSectionCount > 1 else { return nil }
+        guard case let .date(sectionIdentifier) = sectionIdentifiers[section] else { return nil }
         return SectionDateHeaderView().with {
             $0.updateTitle(date: sectionIdentifier)
         }
+    }
+
+    func tableView(_: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
+        let sectionIdentifiers = dataSource.snapshot().sectionIdentifiers
+        guard case .date = sectionIdentifiers[section] else { return 0 }
+        let datedSectionCount = sectionIdentifiers.filter {
+            if case .date = $0 { return true }
+            return false
+        }.count
+        return datedSectionCount > 1 ? UITableView.automaticDimension : 0
     }
 }

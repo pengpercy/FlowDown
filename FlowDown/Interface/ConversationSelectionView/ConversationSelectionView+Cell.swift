@@ -11,7 +11,7 @@ import Storage
 import UIKit
 
 extension ConversationSelectionView {
-    class Cell: UITableViewCell, UIContextMenuInteractionDelegate {
+    class Cell: UITableViewCell, UIContextMenuInteractionDelegate, UIGestureRecognizerDelegate {
         let stack = UIStackView().with {
             $0.axis = .horizontal
             $0.spacing = 12
@@ -85,6 +85,7 @@ extension ConversationSelectionView {
 
             contentView.isUserInteractionEnabled = true
             let tap = UITapGestureRecognizer(target: self, action: #selector(didSelectCell))
+            tap.delegate = self
             contentView.addGestureRecognizer(tap)
             #if targetEnvironment(macCatalyst)
                 contentView.backgroundColor = .accent.withAlphaComponent(0.001)
@@ -160,11 +161,16 @@ extension ConversationSelectionView {
         }
 
         @objc func didSelectCell() {
-            // Folder rows are toggled by the table view delegate; intercepting
-            // them here as well would toggle twice per tap.
             guard case let .conversation(id) = item else { return }
             Logger.ui.debugFile("did select conversation cell: \(id)")
             ChatSelection.shared.select(id, options: [.collapseSidebar])
+        }
+
+        override func gestureRecognizerShouldBegin(_: UIGestureRecognizer) -> Bool {
+            // Folder rows must not be intercepted here: the tap has to reach
+            // the table view so the delegate can toggle the folder.
+            if case .folder = item { return false }
+            return true
         }
     }
 }
