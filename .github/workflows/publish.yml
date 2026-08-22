@@ -1,4 +1,5 @@
 name: Publish
+run-name: Prepare ${{ inputs.version || github.ref_name }} Release
 
 # Fork-only release pipeline. Builds one Mac Catalyst app per CPU
 # architecture, wraps each in its own DMG, and publishes a GitHub Release.
