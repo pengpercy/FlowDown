@@ -11,7 +11,7 @@ import Storage
 import UIKit
 
 extension ConversationSelectionView {
-    class Cell: UITableViewCell, UIContextMenuInteractionDelegate, UIGestureRecognizerDelegate {
+    class Cell: UITableViewCell, UIContextMenuInteractionDelegate {
         let stack = UIStackView().with {
             $0.axis = .horizontal
             $0.spacing = 12
