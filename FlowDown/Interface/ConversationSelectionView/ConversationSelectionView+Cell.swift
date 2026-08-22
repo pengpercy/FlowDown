@@ -6,6 +6,7 @@
 //
 
 import AlertController
+import SnapKit
 import Storage
 import UIKit
 
@@ -37,11 +38,35 @@ extension ConversationSelectionView {
             $0.translatesAutoresizingMaskIntoConstraints = false
         }
 
+        let countLabel = UILabel().with {
+            $0.font = .preferredFont(forTextStyle: .caption1)
+            $0.textColor = .tertiaryLabel
+            $0.numberOfLines = 1
+            $0.translatesAutoresizingMaskIntoConstraints = false
+        }
+
+        let chevronView = UIImageView().with {
+            $0.contentMode = .scaleAspectFit
+            $0.image = UIImage(
+                systemName: "chevron.right",
+                withConfiguration: UIImage.SymbolConfiguration(font: .preferredFont(forTextStyle: .caption1), scale: .small),
+            )
+            $0.tintColor = .tertiaryLabel
+            $0.translatesAutoresizingMaskIntoConstraints = false
+        }
+
+        private var leadingConstraint: Constraint?
+
         override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
             super.init(style: style, reuseIdentifier: reuseIdentifier)
             stack.addArrangedSubview(iconView)
             stack.addArrangedSubview(titleLabel)
+            stack.addArrangedSubview(countLabel)
+            stack.addArrangedSubview(chevronView)
             contentView.addSubview(stack)
+
+            titleLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
             backgroundColor = .clear
             separatorInset = .zero
@@ -53,7 +78,9 @@ extension ConversationSelectionView {
             selectedBackgroundView = selectionColor
 
             stack.snp.makeConstraints { make in
-                make.edges.equalToSuperview().inset(UIEdgeInsets(horizontal: 24, vertical: 16))
+                make.top.bottom.equalToSuperview().inset(16)
+                make.right.equalToSuperview().inset(24)
+                leadingConstraint = make.left.equalToSuperview().inset(24).constraint
             }
 
             contentView.isUserInteractionEnabled = true
@@ -72,10 +99,13 @@ extension ConversationSelectionView {
             fatalError()
         }
 
-        private var conversationIdentifier: Conversation.ID?
+        private var item: DataIdentifier?
 
-        func use(conversation conv: Conversation?) {
-            conversationIdentifier = conv?.id
+        func use(conversation conv: Conversation?, indented: Bool = false) {
+            item = conv.map { .conversation($0.id) }
+            chevronView.isHidden = true
+            countLabel.isHidden = true
+            leadingConstraint?.update(offset: indented ? 52 : 24)
             guard let conv else {
                 titleLabel.text = nil
                 iconView.image = UIImage(systemName: "doc.text")
@@ -85,59 +115,56 @@ extension ConversationSelectionView {
             iconView.image = conv.interfaceImage
         }
 
-        func use(folder: ConversationFolder?) {
-            conversationIdentifier = nil
+        func use(folder: ConversationFolder?, expanded: Bool, count: Int) {
+            let previousItem = item
+            item = folder.map { .folder($0.id) }
+            leadingConstraint?.update(offset: 24)
+            chevronView.isHidden = false
+            countLabel.isHidden = false
+            countLabel.text = count > 0 ? "\(count)" : nil
             titleLabel.text = folder?.title
-            iconView.image = UIImage(systemName: "folder")
+            iconView.image = UIImage(systemName: "folder.fill")
+
+            let target: CGAffineTransform = expanded ? .init(rotationAngle: .pi / 2) : .identity
+            let isSameFolder = previousItem == item
+            if isSameFolder, chevronView.transform != target {
+                UIView.animate(withDuration: 0.2, delay: 0, options: [.curveEaseInOut]) {
+                    self.chevronView.transform = target
+                }
+            } else {
+                chevronView.transform = target
+            }
         }
 
         func contextMenuInteraction(
             _: UIContextMenuInteraction,
             configurationForMenuAtLocation _: CGPoint,
         ) -> UIContextMenuConfiguration? {
-            guard let conversationIdentifier else { return nil }
+            guard let item else { return nil }
 
             return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
                 guard let self else { return nil }
-                return ConversationManager.shared.menu(
-                    forConversation: conversationIdentifier,
-                    selectedConversations: self.selectedConversationIdentifiers,
-                    view: self,
-                )
+                switch item {
+                case let .conversation(identifier):
+                    return ConversationManager.shared.menu(
+                        forConversation: identifier,
+                        view: self,
+                    )
+                case let .folder(identifier):
+                    return ConversationManager.shared.folderMenu(
+                        forFolder: identifier,
+                        view: self,
+                    )
+                }
             }
         }
 
         @objc func didSelectCell() {
-            guard let id = conversationIdentifier else { return }
+            // Folder rows are toggled by the table view delegate; intercepting
+            // them here as well would toggle twice per tap.
+            guard case let .conversation(id) = item else { return }
             Logger.ui.debugFile("did select conversation cell: \(id)")
             ChatSelection.shared.select(id, options: [.collapseSidebar])
-        }
-
-        private var sidebar: Sidebar? {
-            var view: UIView? = superview
-            while let v = view {
-                if let v = v as? Sidebar {
-                    return v
-                }
-                view = v.superview
-            }
-            return nil
-        }
-
-        private var selectedConversationIdentifiers: [Conversation.ID] {
-            var view: UIView? = superview
-            while let current = view {
-                if let selectionView = current as? ConversationSelectionView {
-                    return selectionView.tableView.indexPathsForSelectedRows?
-                        .compactMap { selectionView.dataSource.itemIdentifier(for: $0) }
-                        .compactMap { item -> Conversation.ID? in
-                            guard case let .conversation(identifier) = item else { return nil }
-                            return identifier
-                        } ?? []
-                }
-                view = current.superview
-            }
-            return []
         }
     }
 }

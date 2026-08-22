@@ -1,21 +1,19 @@
+//
+//  ConversationSelectionView+DragDrop.swift
+//  FlowDown
+//
+//  Created by 秋星桥 on 8/22/26.
+//
+
 import Storage
 import UIKit
 
 extension ConversationSelectionView: UITableViewDragDelegate, UITableViewDropDelegate {
-    func tableView(_ tableView: UITableView, itemsForBeginning _: UIDragSession, at indexPath: IndexPath) -> [UIDragItem] {
+    func tableView(_: UITableView, itemsForBeginning _: UIDragSession, at indexPath: IndexPath) -> [UIDragItem] {
         guard let item = dataSource.itemIdentifier(for: indexPath), case let .conversation(identifier) = item else { return [] }
-        let selectedIdentifiers = tableView.indexPathsForSelectedRows?
-            .compactMap { dataSource.itemIdentifier(for: $0) }
-            .compactMap { item -> Conversation.ID? in
-                guard case let .conversation(identifier) = item else { return nil }
-                return identifier
-            } ?? []
-        let identifiers = selectedIdentifiers.contains(identifier) ? selectedIdentifiers : [identifier]
-        return identifiers.map { identifier in
-            let dragItem = UIDragItem(itemProvider: NSItemProvider(object: identifier as NSString))
-            dragItem.localObject = identifier
-            return dragItem
-        }
+        let dragItem = UIDragItem(itemProvider: NSItemProvider(object: identifier as NSString))
+        dragItem.localObject = identifier
+        return [dragItem]
     }
 
     func tableView(_: UITableView, dropSessionDidUpdate session: UIDropSession, withDestinationIndexPath indexPath: IndexPath?) -> UITableViewDropProposal {
@@ -34,5 +32,6 @@ extension ConversationSelectionView: UITableViewDragDelegate, UITableViewDropDel
         else { return }
         let identifiers = coordinator.items.compactMap { $0.dragItem.localObject as? Conversation.ID }
         ConversationManager.shared.moveConversations(identifiers, toFolder: folderId)
+        expandFolder(folderId)
     }
 }

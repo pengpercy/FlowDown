@@ -18,7 +18,15 @@ extension ConversationManager {
         let dic = OrderedDictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
         conversations.send(dic)
         folders.send(sdb.conversationFolderList())
-        folderMemberships.send(sdb.conversationFolderMemberships())
+        var memberships = sdb.conversationFolderMemberships()
+        // Memberships can outlive their conversation when a deletion arrives
+        // from sync; prune them so folders never count phantom rows.
+        let orphaned = memberships.keys.filter { dic[$0] == nil }
+        if !orphaned.isEmpty {
+            sdb.conversationAssign(orphaned, toFolder: nil)
+            orphaned.forEach { memberships[$0] = nil }
+        }
+        folderMemberships.send(memberships)
     }
 
     @discardableResult
@@ -31,6 +39,11 @@ extension ConversationManager {
 
     func moveConversations(_ identifiers: [Conversation.ID], toFolder folderId: ConversationFolder.ID?) {
         sdb.conversationAssign(identifiers, toFolder: folderId)
+        scanAll()
+    }
+
+    func renameFolder(identifier: ConversationFolder.ID, title: String) {
+        sdb.conversationFolderUpdate(identifier: identifier, title: title)
         scanAll()
     }
 

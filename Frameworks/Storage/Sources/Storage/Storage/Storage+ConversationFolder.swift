@@ -23,6 +23,15 @@ public extension Storage {
         return folder
     }
 
+    func conversationFolderUpdate(identifier: ConversationFolder.ID, title: String) {
+        guard !identifier.isEmpty else { return }
+        let update = StatementUpdate().update(table: ConversationFolder.tableName)
+            .set(ConversationFolder.Properties.title)
+            .to(title)
+            .where(ConversationFolder.Properties.objectId == identifier)
+        try? db.exec(update)
+    }
+
     func conversationAssign(_ identifiers: [Conversation.ID], toFolder folderId: ConversationFolder.ID?) {
         guard !identifiers.isEmpty else { return }
         try? runTransaction { handle in

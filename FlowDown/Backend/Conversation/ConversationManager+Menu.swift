@@ -19,7 +19,6 @@ private let dateFormatter = DateFormatter().with {
 extension ConversationManager {
     func menu(
         forConversation identifier: Conversation.ID?,
-        selectedConversations: [Conversation.ID] = [],
         view: UIView,
     ) -> UIMenu? {
         guard let controller = view.parentViewController else { return nil }
@@ -78,15 +77,23 @@ extension ConversationManager {
                         text: "",
                     ) { text in
                         let title = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                        let identifiers = Array(Set(selectedConversations + [conv.id]))
                         ConversationManager.shared.createFolder(
                             title: title.isEmpty ? String(localized: "New Folder") : title,
-                            conversations: identifiers,
+                            conversations: [conv.id],
                         )
                     }
                     controller.present(alert, animated: true)
                 },
-            ],
+                { () -> UIMenuElement? in
+                    guard folderMemberships.value[conv.id] != nil else { return nil }
+                    return UIAction(
+                        title: String(localized: "Remove from Folder"),
+                        image: UIImage(systemName: "folder.badge.minus"),
+                    ) { _ in
+                        ConversationManager.shared.moveConversations([conv.id], toFolder: nil)
+                    }
+                }(),
+            ].compactMap(\.self),
         )
 
         let exportDocumentMenu = UIMenu(
@@ -457,5 +464,43 @@ extension ConversationManager {
         if !management.children.isEmpty { finalChildren.append(management) }
 
         return UIMenu(options: [.displayInline], children: finalChildren)
+    }
+
+    func folderMenu(
+        forFolder identifier: ConversationFolder.ID,
+        view: UIView,
+    ) -> UIMenu? {
+        guard let controller = view.parentViewController else { return nil }
+        guard let folder = folders.value.first(where: { $0.id == identifier }) else { return nil }
+
+        return UIMenu(
+            title: folder.title,
+            children: [
+                UIAction(
+                    title: String(localized: "Rename Folder"),
+                    image: UIImage(systemName: "pencil"),
+                ) { _ in
+                    let alert = AlertInputViewController(
+                        title: String(localized: "Rename Folder"),
+                        message: String(localized: "Set a new name for the folder."),
+                        placeholder: String(localized: "Folder Name"),
+                        text: folder.title,
+                    ) { text in
+                        let title = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !title.isEmpty, title != folder.title else { return }
+                        ConversationManager.shared.renameFolder(identifier: folder.id, title: title)
+                    }
+                    controller.present(alert, animated: true)
+                },
+                UIAction(
+                    title: String(localized: "Delete Folder"),
+                    image: UIImage(systemName: "trash"),
+                    attributes: .destructive,
+                ) { _ in
+                    // Conversations inside are kept and simply become unfiled.
+                    ConversationManager.shared.deleteFolder(identifier: folder.id)
+                },
+            ],
+        )
     }
 }
