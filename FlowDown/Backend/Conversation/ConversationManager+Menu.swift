@@ -19,6 +19,7 @@ private let dateFormatter = DateFormatter().with {
 extension ConversationManager {
     func menu(
         forConversation identifier: Conversation.ID?,
+        selectedConversations: [Conversation.ID] = [],
         view: UIView,
     ) -> UIMenu? {
         guard let controller = view.parentViewController else { return nil }
@@ -65,6 +66,25 @@ extension ConversationManager {
                         }
                     }
                     controller.present(picker, animated: true)
+                },
+                UIAction(
+                    title: String(localized: "New Folder"),
+                    image: UIImage(systemName: "folder.badge.plus"),
+                ) { _ in
+                    let alert = AlertInputViewController(
+                        title: String(localized: "New Folder"),
+                        message: String(localized: "Create a folder for this conversation."),
+                        placeholder: String(localized: "Folder Name"),
+                        text: "",
+                    ) { text in
+                        let title = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let identifiers = Array(Set(selectedConversations + [conv.id]))
+                        ConversationManager.shared.createFolder(
+                            title: title.isEmpty ? String(localized: "New Folder") : title,
+                            conversations: identifiers,
+                        )
+                    }
+                    controller.present(alert, animated: true)
                 },
             ],
         )
