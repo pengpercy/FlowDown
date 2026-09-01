@@ -158,7 +158,6 @@ release-macos-dmg: install-metal-toolchain
 	DERIVED_DATA="$(DERIVED_DATA)" ./Resources/DevKit/scripts/strip_mlx_cuda_plugin.sh
 	$(BUILD_ENV) XCBUILD_LABEL=release-macos-$(ARCH) $(XCODEBUILD) \
 		-scheme $(IOS_SCHEME) \
-		-configuration Release \
 		-destination "$(CATALYST_DESTINATION)" \
 		archive \
 		-archivePath "$(ROOT_DIR)/BuildArtifacts/macos-$(ARCH).xcarchive" \
