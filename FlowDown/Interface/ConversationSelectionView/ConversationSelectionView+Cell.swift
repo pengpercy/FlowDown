@@ -55,6 +55,12 @@ extension ConversationSelectionView {
             $0.translatesAutoresizingMaskIntoConstraints = false
         }
 
+        private let folderBackgroundView = UIView().with {
+            $0.backgroundColor = .accent.withAlphaComponent(0.15)
+            $0.layer.cornerRadius = 8
+            $0.isHidden = true
+        }
+
         private var stackLeadingConstraint: Constraint?
 
         override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
@@ -63,6 +69,7 @@ extension ConversationSelectionView {
             stack.addArrangedSubview(titleLabel)
             stack.addArrangedSubview(countLabel)
             stack.addArrangedSubview(chevronView)
+            contentView.insertSubview(folderBackgroundView, at: 0)
             contentView.addSubview(stack)
 
             titleLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
@@ -77,6 +84,9 @@ extension ConversationSelectionView {
             }
             selectedBackgroundView = selectionColor
 
+            folderBackgroundView.snp.makeConstraints { make in
+                make.edges.equalToSuperview()
+            }
             stack.snp.makeConstraints { make in
                 make.top.bottom.equalToSuperview().inset(2)
                 make.right.equalToSuperview().inset(12)
@@ -104,6 +114,8 @@ extension ConversationSelectionView {
 
         func use(conversation conv: Conversation?, indented: Bool = false) {
             item = conv.map { .conversation($0.id) }
+            selectionStyle = .default
+            folderBackgroundView.isHidden = true
             chevronView.isHidden = true
             countLabel.isHidden = true
             stackLeadingConstraint?.update(offset: indented ? 36 : 12)
@@ -119,6 +131,8 @@ extension ConversationSelectionView {
         func use(folder: ConversationFolder?, expanded: Bool, count: Int) {
             let previousItem = item
             item = folder.map { .folder($0.id) }
+            selectionStyle = .none
+            folderBackgroundView.isHidden = !expanded
             stackLeadingConstraint?.update(offset: 12)
             chevronView.isHidden = false
             countLabel.isHidden = false
