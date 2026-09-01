@@ -14,7 +14,7 @@ extension ConversationSelectionView {
     class Cell: UITableViewCell, UIContextMenuInteractionDelegate {
         let stack = UIStackView().with {
             $0.axis = .horizontal
-            $0.spacing = 12
+            $0.spacing = 8
             $0.alignment = .center
             $0.distribution = .fill
             $0.translatesAutoresizingMaskIntoConstraints = false
@@ -26,7 +26,7 @@ extension ConversationSelectionView {
             $0.tintColor = .accent
             $0.translatesAutoresizingMaskIntoConstraints = false
             $0.snp.makeConstraints { make in
-                make.width.height.equalTo(28)
+                make.width.height.equalTo(16)
             }
         }
 
@@ -73,14 +73,14 @@ extension ConversationSelectionView {
 
             let selectionColor = UIView().with {
                 $0.backgroundColor = .accent.withAlphaComponent(0.15)
-                $0.layer.cornerRadius = 12
+                $0.layer.cornerRadius = 8
             }
             selectedBackgroundView = selectionColor
 
             stack.snp.makeConstraints { make in
-                make.top.bottom.equalToSuperview().inset(16)
-                make.right.equalToSuperview().inset(24)
-                stackLeadingConstraint = make.left.equalToSuperview().inset(24).constraint
+                make.top.bottom.equalToSuperview().inset(2)
+                make.right.equalToSuperview().inset(12)
+                stackLeadingConstraint = make.left.equalToSuperview().inset(12).constraint
             }
 
             contentView.isUserInteractionEnabled = true
@@ -106,7 +106,7 @@ extension ConversationSelectionView {
             item = conv.map { .conversation($0.id) }
             chevronView.isHidden = true
             countLabel.isHidden = true
-            stackLeadingConstraint?.update(offset: indented ? 52 : 24)
+            stackLeadingConstraint?.update(offset: indented ? 36 : 12)
             guard let conv else {
                 titleLabel.text = nil
                 iconView.image = UIImage(systemName: "doc.text")
@@ -119,7 +119,7 @@ extension ConversationSelectionView {
         func use(folder: ConversationFolder?, expanded: Bool, count: Int) {
             let previousItem = item
             item = folder.map { .folder($0.id) }
-            stackLeadingConstraint?.update(offset: 24)
+            stackLeadingConstraint?.update(offset: 12)
             chevronView.isHidden = false
             countLabel.isHidden = false
             countLabel.text = count > 0 ? "\(count)" : nil
