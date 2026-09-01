@@ -88,8 +88,8 @@ class ConversationSelectionView: UIView {
         tableView.separatorStyle = .none
         tableView.separatorInset = .zero
         tableView.separatorColor = .clear
-        tableView.rowHeight = 25
-        tableView.estimatedRowHeight = 25
+        tableView.rowHeight = 35
+        tableView.estimatedRowHeight = 35
         tableView.contentInset = .zero
         tableView.allowsMultipleSelection = false
         tableView.selectionFollowsFocus = true
