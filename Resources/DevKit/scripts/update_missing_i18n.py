@@ -77,6 +77,14 @@ NEW_STRINGS: dict[str, dict[str, str]] = {
         "ko": "폴더 삭제",
         "zh-Hans": "删除文件夹",
     },
+    "Move to Folder": {
+        "de": "In Ordner verschieben",
+        "es": "Mover a la carpeta",
+        "fr": "Déplacer vers le dossier",
+        "ja": "フォルダに移動",
+        "ko": "폴더로 이동",
+        "zh-Hans": "移动到文件夹",
+    },
     "Remove from Folder": {
         "de": "Aus Ordner entfernen",
         "es": "Quitar de la carpeta",

@@ -85,6 +85,25 @@ extension ConversationManager {
                     controller.present(alert, animated: true)
                 },
                 { () -> UIMenuElement? in
+                    let availableFolders = folders.value
+                    guard !availableFolders.isEmpty else { return nil }
+                    let currentFolderId = folderMemberships.value[conv.id]
+                    return UIMenu(
+                        title: String(localized: "Move to Folder"),
+                        image: UIImage(systemName: "folder"),
+                        options: [.singleSelection],
+                        children: availableFolders.map { folder in
+                            UIAction(
+                                title: folder.title,
+                                image: UIImage(systemName: "folder.fill"),
+                                state: currentFolderId == folder.id ? .on : .off,
+                            ) { _ in
+                                ConversationManager.shared.moveConversations([conv.id], toFolder: folder.id)
+                            }
+                        },
+                    )
+                }(),
+                { () -> UIMenuElement? in
                     guard folderMemberships.value[conv.id] != nil else { return nil }
                     return UIAction(
                         title: String(localized: "Remove from Folder"),
