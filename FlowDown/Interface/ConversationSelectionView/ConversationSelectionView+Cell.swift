@@ -112,6 +112,26 @@ extension ConversationSelectionView {
 
         private var item: DataIdentifier?
 
+        override var focusEffect: UIFocusEffect? {
+            get {
+                if case .folder = item { return nil }
+                return super.focusEffect
+            }
+            set {
+                super.focusEffect = newValue
+            }
+        }
+
+        override func didUpdateFocus(in context: UIFocusUpdateContext, with coordinator: UIFocusAnimationCoordinator) {
+            super.didUpdateFocus(in: context, with: coordinator)
+            guard case .folder = item else { return }
+            let isFolderFocused = context.nextFocusedView === self
+                || context.nextFocusedView?.isDescendant(of: self) == true
+            coordinator.addCoordinatedAnimations { [weak self] in
+                self?.folderBackgroundView.isHidden = !isFolderFocused
+            }
+        }
+
         func use(conversation conv: Conversation?, indented: Bool = false) {
             item = conv.map { .conversation($0.id) }
             selectionStyle = .default
@@ -132,7 +152,7 @@ extension ConversationSelectionView {
             let previousItem = item
             item = folder.map { .folder($0.id) }
             selectionStyle = .none
-            folderBackgroundView.isHidden = !expanded
+            folderBackgroundView.isHidden = true
             stackLeadingConstraint?.update(offset: 12)
             chevronView.isHidden = false
             countLabel.isHidden = false

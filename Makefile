@@ -55,7 +55,7 @@ endef
 .PHONY: all help \
 	build build-ios build-catalyst build-extension \
 	test test-unit test-chat-client-kit test-online-e2e \
-	install-metal-toolchain package-resolve package-update package-verify scan-license \
+	install-metal-toolchain package-resolve package-update package-verify scan-license release-macos-dmg \
 	localization-check localization-stale-check \
 	archive archive-ios archive-macos \
 	chore clean clean-build
@@ -81,6 +81,7 @@ help:
 	@echo "  package-update        Upgrade SwiftPM packages"
 	@echo "  package-verify        Check Package.resolved keeps the pins Xcode Cloud needs"
 	@echo "  scan-license          Refresh open source licenses"
+	@echo "  release-macos-dmg     Build one signed Mac Catalyst DMG (ARCH and VERSION required)"
 	@echo ""
 	@echo "Localization:"
 	@echo "  localization-check        Check for missing translations"
@@ -146,6 +147,25 @@ test-online-e2e: install-metal-toolchain package-resolve
 
 install-metal-toolchain:
 	./Resources/DevKit/scripts/install-metal-toolchain.sh
+
+release-macos-dmg: install-metal-toolchain
+	@test -n "$(ARCH)"
+	@test -n "$(VERSION)"
+	$(prepare-build-dirs)
+	$(BUILD_ENV) XCBUILD_LABEL=release-macos-resolve $(XCODEBUILD) \
+		-scheme $(IOS_SCHEME) \
+		-resolvePackageDependencies
+	DERIVED_DATA="$(DERIVED_DATA)" ./Resources/DevKit/scripts/strip_mlx_cuda_plugin.sh
+	$(BUILD_ENV) XCBUILD_LABEL=release-macos-$(ARCH) $(XCODEBUILD) \
+		-scheme $(IOS_SCHEME) \
+		-configuration Release \
+		-destination "$(CATALYST_DESTINATION)" \
+		archive \
+		-archivePath "$(ROOT_DIR)/BuildArtifacts/macos-$(ARCH).xcarchive" \
+		ARCHS="$(ARCH)" \
+		ONLY_ACTIVE_ARCH=NO \
+		EXCLUDED_ARCHS="$(if $(filter arm64,$(ARCH)),x86_64,arm64)"
+	ARCH="$(ARCH)" VERSION="$(VERSION)" ./Resources/DevKit/scripts/create-macos-release-dmg.sh
 
 package-resolve:
 	./Resources/DevKit/scripts/resolve-packages.sh

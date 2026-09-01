@@ -1,0 +1,79 @@
+name: Prebuild macOS Release Assets
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "FlowDown/**"
+      - "Frameworks/**"
+      - "Resources/**"
+      - "FlowDown.xcodeproj/**"
+      - "FlowDown.xcworkspace/**"
+      - ".github/workflows/prebuild-macos-release.yml"
+      - ".github/workflows/publish.yml"
+      - "ci_scripts/**"
+      - "Makefile"
+      - "Package.resolved"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-release-prebuild-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos-dmg:
+    name: Prebuild DMG (${{ matrix.label }})
+    runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            label: apple-silicon
+          - arch: x86_64
+            label: intel
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Select Newest Xcode
+        run: |
+          chmod +x Resources/DevKit/scripts/select_newest_xcode.sh
+          ./Resources/DevKit/scripts/select_newest_xcode.sh
+
+      - name: Read Xcode Version
+        id: xcode
+        run: echo "version=$(xcodebuild -version | awk 'NR == 1 { print $2 }')" >> "$GITHUB_OUTPUT"
+
+      - name: Restore SwiftPM Source Packages
+        uses: actions/cache@v5
+        with:
+          path: .ci/DerivedData/SourcePackages
+          key: flowdown-macos-${{ steps.xcode.outputs.version }}-swiftpm-${{ hashFiles('Package.resolved', 'Frameworks/**/Package.resolved') }}
+          restore-keys: |
+            flowdown-macos-${{ steps.xcode.outputs.version }}-swiftpm-
+
+      - name: Build Mac Catalyst ${{ matrix.arch }} DMG
+        env:
+          DERIVED_DATA: ${{ github.workspace }}/.ci/DerivedData
+        run: |
+          VERSION=$(sed -n 's/^MARKETING_VERSION = \(.*\);$/\1/p' FlowDown/Configuration/Version.xcconfig)
+          make release-macos-dmg \
+            ARCH="${{ matrix.arch }}" \
+            VERSION="${VERSION}" \
+            CONFIGURATION=Release \
+            DERIVED_DATA="${DERIVED_DATA}"
+
+      - name: Upload DMG
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-release-dmg-${{ matrix.arch }}
+          path: BuildArtifacts/FlowDown-*-${{ matrix.arch }}.dmg
+          if-no-files-found: error
+          retention-days: 14

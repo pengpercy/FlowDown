@@ -1,9 +1,9 @@
 name: Publish
-run-name: Prepare ${{ inputs.version || github.ref_name }} Release
+run-name: Publish ${{ inputs.version || github.ref_name }} Release
 
-# Fork-only release pipeline. Builds one Mac Catalyst app per CPU
-# architecture, wraps each in its own DMG, and publishes a GitHub Release.
-# Not a universal binary. This file is not intended for upstream.
+# Fork-only release pipeline. A successful prebuild for the exact main commit
+# supplies the architecture-specific macOS DMGs, so tag publication promotes
+# artifacts instead of rebuilding them.
 
 on:
   push:
@@ -12,189 +12,56 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version, for example 5.1.1"
+        description: "Release version, for example 5.1.23"
         required: true
         type: string
 
 permissions:
+  actions: read
   contents: write
 
 jobs:
-  macos-dmg:
-    name: DMG (${{ matrix.label }})
-    runs-on: macos-26
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: arm64
-            label: apple-silicon
-            excluded: x86_64
-          - arch: x86_64
-            label: intel
-            excluded: arm64
-    env:
-      VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref_name }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-        with:
-          submodules: recursive
-
-      - name: Select Newest Xcode
-        run: |
-          chmod +x Resources/DevKit/scripts/select_newest_xcode.sh
-          ./Resources/DevKit/scripts/select_newest_xcode.sh
-
-      - name: Install Metal Toolchain
-        run: make install-metal-toolchain
-
-      - name: Resolve Packages
-        run: |
-          set -o pipefail
-          xcodebuild -downloadComponent MetalToolchain
-          xcodebuild \
-            -workspace FlowDown.xcworkspace \
-            -scheme FlowDown \
-            -resolvePackageDependencies \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            2>&1 | xcbeautify --is-ci --disable-colored-output --disable-logging \
-            2>&1 | sed '/^##\[warning\]/d'
-
-      - name: Strip mlx-swift CUDA Plugin
-        run: |
-          chmod +x Resources/DevKit/scripts/strip_mlx_cuda_plugin.sh
-          ./Resources/DevKit/scripts/strip_mlx_cuda_plugin.sh
-
-      - name: Archive Mac Catalyst ${{ matrix.arch }}
-        run: |
-          set -o pipefail
-          mkdir -p BuildArtifacts
-          xcodebuild \
-            -workspace FlowDown.xcworkspace \
-            -scheme FlowDown \
-            -configuration Release \
-            -destination 'generic/platform=macOS,variant=Mac Catalyst' \
-            archive \
-            -archivePath "BuildArtifacts/macos-${{ matrix.arch }}.xcarchive" \
-            -resultBundlePath "BuildArtifacts/macos-${{ matrix.arch }}.xcresult" \
-            ARCHS="${{ matrix.arch }}" \
-            ONLY_ACTIVE_ARCH=NO \
-            EXCLUDED_ARCHS="${{ matrix.excluded }}" \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            2>&1 | xcbeautify --is-ci --disable-colored-output --disable-logging \
-            2>&1 | sed '/^##\[warning\]/d'
-
-      - name: Ad-hoc sign with sandbox and wrap a single-arch HFS+ DMG
-        run: |
-          set -euo pipefail
-          ARCH="${{ matrix.arch }}"
-          ARCHIVE="BuildArtifacts/macos-${ARCH}.xcarchive"
-          APP_PATH=$(find "${ARCHIVE}/Products" -name "*.app" -maxdepth 5 | head -n 1)
-          if [[ -z "${APP_PATH}" ]]; then
-            echo "No .app found in ${ARCHIVE}" >&2
-            exit 1
-          fi
-
-          BINARY=$(find "${APP_PATH}/Contents/MacOS" -type f -perm +111 | head -n 1)
-          if [[ -z "${BINARY}" ]]; then
-            echo "No executable found in ${APP_PATH}" >&2
-            exit 1
-          fi
-          LIPO_ARCHS=$(lipo -archs "${BINARY}")
-          echo "binary=${BINARY}"
-          echo "lipo-archs=${LIPO_ARCHS}"
-          if [[ "${LIPO_ARCHS}" != "${ARCH}" ]]; then
-            echo "Expected a single ${ARCH} slice, got: ${LIPO_ARCHS}" >&2
-            exit 1
-          fi
-
-          # Release builds fatalError if /tmp is writable — the app must be
-          # sandboxed. Finder also needs a real bundle signature (not linker-
-          # signed) or it reports “没有权限打开 (null)”.
-          ENTITLEMENTS=$(mktemp)
-          cat > "${ENTITLEMENTS}" <<'PLIST'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>com.apple.security.app-sandbox</key>
-            <true/>
-            <key>com.apple.security.network.client</key>
-            <true/>
-            <key>com.apple.security.files.user-selected.read-write</key>
-            <true/>
-            <key>com.apple.security.device.audio-input</key>
-            <true/>
-            <key>com.apple.security.personal-information.calendars</key>
-            <true/>
-            <key>com.apple.security.personal-information.photos-library</key>
-            <true/>
-          </dict>
-          </plist>
-          PLIST
-
-          STAGE=$(mktemp -d)
-          APP_NAME=$(basename "${APP_PATH}")
-          ditto "${APP_PATH}" "${STAGE}/${APP_NAME}"
-          xattr -cr "${STAGE}/${APP_NAME}"
-          while IFS= read -r nested; do
-            codesign --force --sign - --timestamp=none "${nested}"
-          done < <(find "${STAGE}/${APP_NAME}/Contents/Frameworks" -name '*.dylib' -o -name '*.framework' | sort)
-          codesign --force --sign - --timestamp=none \
-            --entitlements "${ENTITLEMENTS}" \
-            "${STAGE}/${APP_NAME}"
-          codesign --verify --verbose=2 "${STAGE}/${APP_NAME}"
-          codesign -d --entitlements - "${STAGE}/${APP_NAME}"
-          ln -s /Applications "${STAGE}/Applications"
-          rm -f "${ENTITLEMENTS}"
-
-          DMG="BuildArtifacts/FlowDown-${VERSION}-${ARCH}.dmg"
-          hdiutil create \
-            -volname "FlowDown ${VERSION} ${ARCH}" \
-            -srcfolder "${STAGE}" \
-            -fs HFS+ \
-            -format UDZO \
-            -ov \
-            "${DMG}"
-          rm -rf "${STAGE}"
-          ls -lh "${DMG}"
-
-      - name: Upload DMG
-        uses: actions/upload-artifact@v7
-        with:
-          name: FlowDown-${{ env.VERSION }}-${{ matrix.arch }}-dmg
-          path: BuildArtifacts/FlowDown-${{ env.VERSION }}-${{ matrix.arch }}.dmg
-          if-no-files-found: error
-          retention-days: 14
-
   release:
     name: GitHub Release
-    needs: macos-dmg
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref_name }}
     steps:
-      - name: Download DMGs
-        uses: actions/download-artifact@v8
-        with:
-          pattern: FlowDown-${{ env.VERSION }}-*-dmg
-          merge-multiple: true
-          path: dist
+      - name: Find Matching Prebuild
+        id: prebuild
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          RUN_ID=$(gh api \
+            "repos/${GITHUB_REPOSITORY}/actions/workflows/prebuild-macos-release.yml/runs?event=push&status=success&per_page=100" \
+            --jq ".workflow_runs[] | select(.head_sha == \"${GITHUB_SHA}\") | .id" \
+            | head -n 1)
+          if [[ -z "${RUN_ID}" ]]; then
+            echo "No successful macOS prebuild exists for ${GITHUB_SHA}. Push this commit to main and wait for Prebuild macOS Release Assets before tagging it." >&2
+            exit 1
+          fi
+          echo "run_id=${RUN_ID}" >> "$GITHUB_OUTPUT"
+
+      - name: Download Prebuilt DMGs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ steps.prebuild.outputs.run_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          gh run download "${RUN_ID}" --repo "${GITHUB_REPOSITORY}" --name macos-release-dmg-arm64 --dir dist
+          gh run download "${RUN_ID}" --repo "${GITHUB_REPOSITORY}" --name macos-release-dmg-x86_64 --dir dist
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          ARM_DMG="dist/FlowDown-${VERSION}-arm64.dmg"
-          INTEL_DMG="dist/FlowDown-${VERSION}-x86_64.dmg"
-          test -f "${ARM_DMG}"
-          test -f "${INTEL_DMG}"
+          ARM_DMG=$(find dist -name "FlowDown-${VERSION}-arm64.dmg" -print -quit)
+          INTEL_DMG=$(find dist -name "FlowDown-${VERSION}-x86_64.dmg" -print -quit)
+          test -n "${ARM_DMG}"
+          test -n "${INTEL_DMG}"
 
           {
             echo "Unsigned ${VERSION} Mac Catalyst builds from ${GITHUB_SHA}."
