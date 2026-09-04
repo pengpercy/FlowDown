@@ -74,6 +74,11 @@ final class AiMessageView: MessageListRowView {
         super.layoutSubviews()
         markdownView.frame = contentView.bounds
         markdownView.trackedScrollView = nearestScrollView
+        // Force internal layout to ensure code block subviews are properly
+        // positioned after content updates, preventing the last code block
+        // from appearing blank until a window resize triggers a relayout.
+        markdownView.setNeedsLayout()
+        markdownView.layoutIfNeeded()
     }
 
     override func didMoveToWindow() {

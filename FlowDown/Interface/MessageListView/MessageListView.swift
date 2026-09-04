@@ -72,7 +72,7 @@ final class MessageListView: UIView {
         }
     }
 
-    static let listRowInsets: UIEdgeInsets = .init(top: 0, left: 20, bottom: 16, right: 20)
+    static let listRowInsets: UIEdgeInsets = .init(top: 0, left: 45, bottom: 16, right: 45)
     var theme: MarkdownTheme = .default {
         didSet {
             guard oldValue != theme else { return }
