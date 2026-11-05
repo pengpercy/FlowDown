@@ -440,8 +440,8 @@ extension CloudProviderEditorController {
         }
         let count = plan.remove.count
         let alert = AlertViewController(
-            title: String(localized: "Remove Unchecked Models"),
-            message: String(localized: "\(count) unchecked models will be removed from FlowDown."),
+            title: "Remove Unchecked Models",
+            message: "\(count) unchecked models will be removed from FlowDown.",
         ) { context in
             context.addAction(title: "Cancel") { context.dispose() }
             context.addAction(title: "Save", attribute: .accent) {
@@ -452,7 +452,8 @@ extension CloudProviderEditorController {
     }
 
     func presentMessage(title: String, message: String) {
-        let alert = AlertViewController(title: title, message: message) { context in
+        // Both are localized already; interpolating them passes the text through.
+        let alert = AlertViewController(title: "\(title)", message: "\(message)") { context in
             context.allowSimpleDispose()
             context.addAction(title: "OK", attribute: .accent) { context.dispose() }
         }
