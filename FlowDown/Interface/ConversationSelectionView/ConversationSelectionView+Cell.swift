@@ -134,6 +134,10 @@ extension ConversationSelectionView {
 
             contentView.isUserInteractionEnabled = true
             let tap = UITapGestureRecognizer(target: self, action: #selector(conversationTapped))
+            // The cell must be the delegate: the recognizer lives on the
+            // content view, so without it `gestureRecognizerShouldBegin`
+            // below is never asked and the tap swallows folder clicks.
+            tap.delegate = self
             contentView.addGestureRecognizer(tap)
             #if targetEnvironment(macCatalyst)
                 // A fully transparent content view lets clicks fall through
