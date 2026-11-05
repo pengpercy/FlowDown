@@ -26,6 +26,10 @@ class ConversationSelectionView: UIView {
 
     var cancellables: Set<AnyCancellable> = []
 
+    /// The selection the list last scrolled to, so that a list update showing
+    /// the same selection again leaves the user's scroll position alone.
+    private var lastRevealedSelection: Conversation.ID?
+
     enum DataIdentifier: Hashable {
         case conversation(Conversation.ID)
         case folder(ConversationFolder.ID)
@@ -136,10 +140,15 @@ class ConversationSelectionView: UIView {
                let indexPath = dataSource.indexPath(for: .conversation(identifier))
             {
                 let visible = tableView.indexPathsForVisibleRows?.contains(indexPath) ?? false
+                // Every list update runs this again for the same selection.
+                // Only a new selection is worth scrolling to, otherwise each
+                // update pulls the list back from wherever the user scrolled.
+                let shouldReveal = !visible && identifier != lastRevealedSelection
+                lastRevealedSelection = identifier
                 tableView.selectRow(
                     at: indexPath,
                     animated: false,
-                    scrollPosition: visible ? .none : .middle,
+                    scrollPosition: shouldReveal ? .middle : .none,
                 )
             } else if let firstConversation = dataSource.snapshot().itemIdentifiers.first(where: {
                 if case .conversation = $0 { return true }
@@ -153,6 +162,21 @@ class ConversationSelectionView: UIView {
                     animated: false,
                     scrollPosition: visible ? .none : .middle,
                 )
+                // The open conversation can leave the list without going
+                // through a local delete, for example when another device
+                // removes it. Move the chat to the row highlighted above, or
+                // it keeps showing and saving into a conversation that no
+                // longer appears anywhere.
+                if let replacement = ConversationSelectionView.replacementSelection(
+                    for: identifier,
+                    displayed: dataSource.snapshot().itemIdentifiers.compactMap {
+                        guard case let .conversation(identifier) = $0 else { return nil }
+                        return identifier
+                    },
+                    isAvailable: { ConversationManager.shared.conversation(identifier: $0) != nil },
+                ) {
+                    ChatSelection.shared.select(replacement)
+                }
             }
         }
         .store(in: &cancellables)
@@ -251,6 +275,16 @@ class ConversationSelectionView: UIView {
     func expandFolder(_ identifier: ConversationFolder.ID) {
         guard !expandedFolderIds.contains(identifier) else { return }
         toggleFolder(identifier)
+    }
+
+    static func replacementSelection(
+        for selected: Conversation.ID?,
+        displayed: [Conversation.ID],
+        isAvailable: (Conversation.ID) -> Bool,
+    ) -> Conversation.ID? {
+        guard let selected, !isAvailable(selected) else { return nil }
+        guard let first = displayed.first, isAvailable(first) else { return nil }
+        return first
     }
 
     override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {

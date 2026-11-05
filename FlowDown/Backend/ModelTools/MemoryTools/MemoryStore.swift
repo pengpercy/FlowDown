@@ -5,50 +5,55 @@
 //  Created by Alan Ye on 8/14/25.
 //
 
-import Combine
 import Foundation
 import Storage
 
 @MainActor
-class MemoryStore: ObservableObject {
+class MemoryStore {
     static let shared = MemoryStore()
 
     private let queue = DispatchQueue(label: "wiki.qaq.MemoryStore", qos: .utility)
     private let maxMemoryCount = 1000
     private let maxMemoryLength = 2000
+    private let memoryLimitRange = 1 ... 100
 
-    @Published var memoryCount: Int = 0
+    private init() {}
 
-    private init() {
-        Task {
-            await updateMemoryCount()
+    private func clampedLimit(_ limit: Int) -> Int {
+        min(max(limit, memoryLimitRange.lowerBound), memoryLimitRange.upperBound)
+    }
+
+    private func validatedContent(_ content: String) throws -> String {
+        let trimmedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedContent.isEmpty else {
+            throw MemoryStoreError.invalidContent(String(localized: "Memory content cannot be empty"))
         }
+
+        guard trimmedContent.count <= maxMemoryLength else {
+            throw MemoryStoreError.invalidContent(
+                String(localized: "Memory content exceeds maximum length of \(maxMemoryLength) characters")
+            )
+        }
+        return trimmedContent
     }
 
     // MARK: - Public Async API
 
     func storeAsync(content: String, conversationId: String? = nil) async throws -> Memory {
-        let trimmedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedContent.isEmpty else {
-            throw MemoryStoreError.invalidContent("Memory content cannot be empty")
-        }
-
-        guard trimmedContent.count <= maxMemoryLength else {
-            throw MemoryStoreError.invalidContent("Memory content exceeds maximum length of \(maxMemoryLength) characters")
-        }
+        let trimmedContent = try validatedContent(content)
 
         return try await withCheckedThrowingContinuation { continuation in
             queue.async {
                 do {
                     let storage = try Storage.db()
-                    let memory = Memory(deviceId: Storage.deviceId, content: trimmedContent, conversationId: conversationId)
+                    let memory = Memory(
+                        deviceId: Storage.deviceId,
+                        content: trimmedContent,
+                        conversationId: conversationId
+                    )
                     try storage.insertMemory(memory)
 
                     try storage.deleteOldMemories(keepCount: self.maxMemoryCount)
-
-                    Task { @MainActor in
-                        await self.updateMemoryCount()
-                    }
 
                     continuation.resume(returning: memory)
                 } catch {
@@ -73,7 +78,7 @@ class MemoryStore: ObservableObject {
     }
 
     func getMemoriesWithLimit(_ limit: Int) async throws -> [Memory] {
-        let safeLimit = min(max(limit, 1), 100)
+        let safeLimit = clampedLimit(limit)
 
         return try await withCheckedThrowingContinuation { continuation in
             queue.async {
@@ -94,7 +99,7 @@ class MemoryStore: ObservableObject {
             return try await getAllMemoriesAsync()
         }
 
-        let safeLimit = min(max(limit, 1), 100)
+        let safeLimit = clampedLimit(limit)
 
         return try await withCheckedThrowingContinuation { continuation in
             queue.async {
@@ -110,14 +115,7 @@ class MemoryStore: ObservableObject {
     }
 
     func updateMemoryAsync(id: String, newContent: String) async throws {
-        let trimmedContent = newContent.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedContent.isEmpty else {
-            throw MemoryStoreError.invalidContent("Memory content cannot be empty")
-        }
-
-        guard trimmedContent.count <= maxMemoryLength else {
-            throw MemoryStoreError.invalidContent("Memory content exceeds maximum length of \(maxMemoryLength) characters")
-        }
+        let trimmedContent = try validatedContent(newContent)
 
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             queue.async {
@@ -132,8 +130,6 @@ class MemoryStore: ObservableObject {
                     try storage.updateMemory(existingMemory)
 
                     continuation.resume()
-                } catch let error as Storage.MemoryError {
-                    continuation.resume(throwing: MemoryStoreError.storageError(error.localizedDescription))
                 } catch {
                     continuation.resume(throwing: MemoryStoreError.storageError(error.localizedDescription))
                 }
@@ -148,13 +144,7 @@ class MemoryStore: ObservableObject {
                     let storage = try Storage.db()
                     try storage.deleteMemory(id: id)
 
-                    Task { @MainActor in
-                        await self.updateMemoryCount()
-                    }
-
                     continuation.resume()
-                } catch let error as Storage.MemoryError {
-                    continuation.resume(throwing: MemoryStoreError.storageError(error.localizedDescription))
                 } catch {
                     continuation.resume(throwing: MemoryStoreError.storageError(error.localizedDescription))
                 }
@@ -169,25 +159,7 @@ class MemoryStore: ObservableObject {
                     let storage = try Storage.db()
                     try storage.deleteAllMemories()
 
-                    Task { @MainActor in
-                        await self.updateMemoryCount()
-                    }
-
                     continuation.resume()
-                } catch {
-                    continuation.resume(throwing: MemoryStoreError.storageError(error.localizedDescription))
-                }
-            }
-        }
-    }
-
-    func getMemoryCount() async throws -> Int {
-        try await withCheckedThrowingContinuation { continuation in
-            queue.async {
-                do {
-                    let storage = try Storage.db()
-                    let count = try storage.getMemoryCount()
-                    continuation.resume(returning: count)
                 } catch {
                     continuation.resume(throwing: MemoryStoreError.storageError(error.localizedDescription))
                 }
@@ -209,7 +181,7 @@ class MemoryStore: ObservableObject {
         do {
             let storage = try Storage.db()
             return Self.render(
-                try storage.getMemoriesWithLimit(min(max(limit, 1), 100)),
+                try storage.getMemoriesWithLimit(clampedLimit(limit)),
                 includeIdentifiers: true,
             )
         } catch {
@@ -262,10 +234,6 @@ class MemoryStore: ObservableObject {
         do {
             let storage = try Storage.db()
             try storage.deleteMemory(id: id)
-
-            Task { @MainActor in
-                await self.updateMemoryCount()
-            }
 
             if let reason {
                 return "Memory deleted successfully. Reason: \(reason)"
@@ -341,15 +309,6 @@ class MemoryStore: ObservableObject {
             return nil
         }
     }
-
-    private func updateMemoryCount() async {
-        do {
-            let count = try await getMemoryCount()
-            memoryCount = count
-        } catch {
-            Logger.database.errorFile("MemoryStore failed to update memory count: \(error)")
-        }
-    }
 }
 
 // MARK: - Error Types
@@ -359,14 +318,14 @@ enum MemoryStoreError: Error, LocalizedError {
     case memoryNotFound(String)
     case storageError(String)
 
-    var localizedDescription: String {
+    var errorDescription: String? {
         switch self {
         case let .invalidContent(message):
-            "Invalid content: \(message)"
+            String(localized: "Invalid content: \(message)")
         case let .memoryNotFound(id):
-            "Memory not found: \(id)"
+            String(localized: "Memory not found: \(id)")
         case let .storageError(message):
-            "Storage error: \(message)"
+            String(localized: "Storage error: \(message)")
         }
     }
 }

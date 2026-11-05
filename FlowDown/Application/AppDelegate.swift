@@ -76,16 +76,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         if let firstSeenTicketURL = FileManager.default
             .urls(for: .documentDirectory, in: .userDomainMask)
             .first?
-            .appendingPathComponent("first_seen_ticket.txt")
+            .appendingPathComponent("first_seen_ticket.txt"),
+            !FileManager.default.fileExists(atPath: firstSeenTicketURL.path)
         {
             let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
-            if !FileManager.default.fileExists(atPath: firstSeenTicketURL.path) {
-                do {
-                    try version.write(to: firstSeenTicketURL, atomically: true, encoding: .utf8)
-                    logger.infoFile("wrote first seen ticket: \(version)")
-                } catch {
-                    logger.errorFile("failed to write first seen ticket: \(error)")
-                }
+            do {
+                try version.write(to: firstSeenTicketURL, atomically: true, encoding: .utf8)
+                logger.infoFile("wrote first seen ticket: \(version)")
+            } catch {
+                logger.errorFile("failed to write first seen ticket: \(error)")
             }
         }
 
@@ -102,7 +101,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         logger.errorFile("ERROR: Failed to register for notifications: \(error.localizedDescription)")
     }
 
-    func application(_: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any], fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+    func application(
+        _: UIApplication,
+        didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+        fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
+    ) {
         guard let notification = CKNotification(fromRemoteNotificationDictionary: userInfo) else {
             completionHandler(.noData)
             return
@@ -136,44 +139,32 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         }
 
         func requestApplicationExit() {
-            requestProtectedTermination {
+            guard ConversationSessionManager.shared.hasExecutingSessions else {
                 terminateApplication()
             }
+            presentExitConfirmationIfNeeded()
         }
 
-        private var hasExecutingConversations: Bool {
-            ConversationSessionManager.shared.hasExecutingSessions
-        }
-
-        private func requestProtectedTermination(_ action: @escaping () -> Void) {
-            guard hasExecutingConversations else {
-                action()
-                return
-            }
-            presentExitConfirmationIfNeeded(action: action)
-        }
-
-        private func presentExitConfirmationIfNeeded(action: @escaping () -> Void) {
+        private func presentExitConfirmationIfNeeded() {
             guard !isPresentingExitConfirmation else { return }
             guard let rootViewController = mainWindow?.rootViewController else {
-                action()
-                return
+                terminateApplication()
             }
 
             isPresentingExitConfirmation = true
 
             let alert = AlertViewController(
-                title: String(localized: "Exit"),
-                message: String(localized: "Exiting now will interrupt the running conversation."),
+                title: "Exit",
+                message: "Exiting now will interrupt the running conversation.",
             ) { [weak self] context in
-                context.addAction(title: String(localized: "Cancel")) {
+                context.addAction(title: "Cancel") {
                     self?.isPresentingExitConfirmation = false
                     context.dispose()
                 }
-                context.addAction(title: String(localized: "Exit"), attribute: .accent) {
+                context.addAction(title: "Exit", attribute: .accent) {
                     self?.isPresentingExitConfirmation = false
                     context.dispose {
-                        action()
+                        terminateApplication()
                     }
                 }
             }

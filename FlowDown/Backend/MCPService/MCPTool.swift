@@ -66,15 +66,7 @@ class MCPTool: ModelTool, @unchecked Sendable {
     // MARK: - Tool Execution
 
     override func execute(with input: String, anchorTo _: UIView) async throws -> String {
-        var arguments: [String: Value]?
-        if !input.isEmpty {
-            let data = Data(input.utf8)
-            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                arguments = json.compactMapValues { value in
-                    convertJSONValueToMCPValue(value)
-                }
-            }
-        }
+        let arguments = callArguments(from: input)
 
         let result = try await mcpService.callTool(
             name: toolInfo.name,
@@ -96,6 +88,29 @@ class MCPTool: ModelTool, @unchecked Sendable {
         // later on we process the result content and map audio and image to user attachment
         // so it can be seen by model
         return result.0.serializedRawContent()
+    }
+}
+
+extension MCPTool {
+    /// Decodes the model's arguments for the server. The strict schema makes
+    /// optional parameters required but nullable, so the model sends null for
+    /// every one it skips; those keys are dropped so the server sees them as
+    /// omitted and applies its own defaults instead of rejecting the null.
+    func callArguments(from input: String) -> [String: Value]? {
+        guard !input.isEmpty,
+              let json = try? JSONSerialization.jsonObject(with: Data(input.utf8)) as? [String: Any]
+        else { return nil }
+        var serverRequired: Set<String> = []
+        if case let .object(schema) = toolInfo.inputSchema,
+           case let .array(required) = schema["required"]
+        {
+            for case let .string(key) in required {
+                serverRequired.insert(key)
+            }
+        }
+        return json
+            .filter { !($0.value is NSNull) || serverRequired.contains($0.key) }
+            .compactMapValues { convertJSONValueToMCPValue($0) }
     }
 }
 
@@ -143,19 +158,26 @@ extension MCPTool {
         if result["properties"] == nil {
             result["properties"] = .object([:])
         }
-        if result["additionalProperties"] == nil {
-            result["additionalProperties"] = .bool(false)
-        }
         return normalizeStrictJSONSchema(result)
     }
 
     private func normalizeStrictJSONSchema(_ schema: [String: AnyCodingValue]) -> [String: AnyCodingValue] {
         var schema = schema
 
-        if let additionalProps = schema["additionalProperties"],
-           case let .object(obj) = additionalProps, obj.isEmpty
-        {
+        // Strict mode requires `additionalProperties: false` on every object,
+        // nested ones included. A missing key or `true` allows the same as
+        // `{}`, and strict mode cannot honor undeclared keys anyway because
+        // every property becomes required below. A non-empty schema (a map
+        // type) is left alone.
+        switch schema["additionalProperties"] {
+        case .none, .some(.bool(true)):
+            if isObjectSchema(schema) {
+                schema["additionalProperties"] = .bool(false)
+            }
+        case let .some(.object(obj)) where obj.isEmpty:
             schema["additionalProperties"] = .bool(false)
+        default:
+            break
         }
 
         if case let .object(properties) = schema["properties"] {
@@ -201,7 +223,26 @@ extension MCPTool {
             schema["allOf"] = .array(allOfArray.map { normalizeStrictJSONSchemaValue($0) })
         }
 
+        // `$ref` targets have to be strict as well.
+        for definitionsKey in ["$defs", "definitions"] {
+            if case let .object(definitions) = schema[definitionsKey] {
+                schema[definitionsKey] = .object(definitions.mapValues { normalizeStrictJSONSchemaValue($0) })
+            }
+        }
+
         return schema
+    }
+
+    private func isObjectSchema(_ schema: [String: AnyCodingValue]) -> Bool {
+        if schema["properties"] != nil { return true }
+        switch schema["type"] {
+        case .some(.string("object")):
+            return true
+        case let .some(.array(types)):
+            return types.contains { $0 == .string("object") }
+        default:
+            return false
+        }
     }
 
     private func normalizeStrictJSONSchemaValue(_ value: AnyCodingValue) -> AnyCodingValue {

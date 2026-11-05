@@ -5,7 +5,6 @@
 //  Created by qaq on 13/12/2025.
 //
 
-import ExtensionKit
 @preconcurrency import Storage
 import SwiftUI
 import TranslationUIProvider
@@ -20,12 +19,8 @@ private extension CloudModel {
 }
 
 extension TranslationProviderView {
-    private var selectedLanguageHintText: String {
-        selectedLanguageHint.isEmpty ? currentLocaleDescription : selectedLanguageHint
-    }
-
     private var controlText: String {
-        "\(model.buttonName) - \(selectedLanguageHintText)"
+        "\(selectedModel?.buttonName ?? "") - \(targetLanguage)"
     }
 
     var footer: some View {
@@ -85,7 +80,10 @@ extension TranslationProviderView {
         }
         .buttonStyle(.plain)
         Button {
-            UIPasteboard.general.string = translationModel.translationPlainResult
+            let text = translationModel.copyableResult
+            if !text.isEmpty {
+                UIPasteboard.general.string = text
+            }
             context.finish(translation: nil)
         } label: {
             IconButtonContainer(icon: "doc.on.doc.fill", foregroundColor: .accent)

@@ -33,7 +33,7 @@ public struct StringArrayCodable: ColumnCodable {
     }
 }
 
-public final class ModelContextServer: Identifiable, Codable, TableNamed, DeviceOwned, TableCodable {
+public final class ModelContextServer: Identifiable, Codable, TableNamed, TableCodable {
     public static let tableName: String = "ModelContextServer"
 
     public var id: String {
@@ -154,7 +154,10 @@ public final class ModelContextServer: Identifiable, Codable, TableNamed, Device
         resourcesEnabled = try container.decodeIfPresent(EnableCodable.self, forKey: .resourcesEnabled) ?? .init()
         templateEnabled = try container.decodeIfPresent(EnableCodable.self, forKey: .templateEnabled) ?? .init()
         lastConnected = try container.decodeIfPresent(Date.self, forKey: .lastConnected)
-        connectionStatus = try container.decodeIfPresent(ConnectionStatus.self, forKey: .connectionStatus) ?? .disconnected
+        connectionStatus = try container.decodeIfPresent(
+            ConnectionStatus.self,
+            forKey: .connectionStatus
+        ) ?? .disconnected
         capabilities = try container.decodeIfPresent(StringArrayCodable.self, forKey: .capabilities) ?? .init([])
 
         removed = try container.decodeIfPresent(Bool.self, forKey: .removed) ?? false
@@ -173,7 +176,10 @@ public final class ModelContextServer: Identifiable, Codable, TableNamed, Device
 
 extension ModelContextServer: Updatable {
     @discardableResult
-    public func update<Value: Equatable>(_ keyPath: ReferenceWritableKeyPath<ModelContextServer, Value>, to newValue: Value) -> Bool {
+    public func update<Value: Equatable>(
+        _ keyPath: ReferenceWritableKeyPath<ModelContextServer, Value>,
+        to newValue: Value
+    ) -> Bool {
         let oldValue = self[keyPath: keyPath]
         guard oldValue != newValue else { return false }
         assign(keyPath, to: newValue)
@@ -182,11 +188,6 @@ extension ModelContextServer: Updatable {
 
     public func assign<Value>(_ keyPath: ReferenceWritableKeyPath<ModelContextServer, Value>, to newValue: Value) {
         self[keyPath: keyPath] = newValue
-        markModified()
-    }
-
-    package func update(_ block: (ModelContextServer) -> Void) {
-        block(self)
         markModified()
     }
 }

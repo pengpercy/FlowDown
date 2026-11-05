@@ -4,15 +4,15 @@ import { getDocsConfig } from "@/lib/docs-config";
 
 export const metadata: Metadata = {
   title: "FlowDown Documentation",
-  description:
-    "FlowDown documentation - Learn how to use FlowDown, a privacy-first AI workspace for iOS and macOS.",
   alternates: {
     canonical: "/docs",
   },
 };
 
+const previewCount = 4;
+
 export default function DocsHomePage() {
-  const config = getDocsConfig();
+  const sections = getDocsConfig();
 
   return (
     <div>
@@ -24,7 +24,7 @@ export default function DocsHomePage() {
       </p>
 
       <div className="grid gap-4 md:grid-cols-2">
-        {config.sidebarNav.map((section, idx) => (
+        {sections.map((section, idx) => (
           <div
             key={idx}
             className="bg-[#ebebeb] rounded-xl p-5 border border-[#e6e6e6] hover:border-[#d0d0d0] transition-colors"
@@ -32,25 +32,23 @@ export default function DocsHomePage() {
             <h2 className="font-semibold text-[#242424] mb-3 text-base">
               {section.title}
             </h2>
-            {section.items && (
-              <ul className="space-y-1.5">
-                {section.items.slice(0, 4).map((item, itemIdx) => (
-                  <li key={itemIdx}>
-                    <Link
-                      href={item.href || "#"}
-                      className="text-[#454545] hover:text-[#242424] text-sm transition-colors"
-                    >
-                      {item.title}
-                    </Link>
-                  </li>
-                ))}
-                {section.items.length > 4 && (
-                  <li className="text-[#9d9d9d] text-sm">
-                    +{section.items.length - 4} more...
-                  </li>
-                )}
-              </ul>
-            )}
+            <ul className="space-y-1.5">
+              {section.items.slice(0, previewCount).map((item, itemIdx) => (
+                <li key={itemIdx}>
+                  <Link
+                    href={item.href}
+                    className="text-[#454545] hover:text-[#242424] text-sm transition-colors"
+                  >
+                    {item.title}
+                  </Link>
+                </li>
+              ))}
+              {section.items.length > previewCount && (
+                <li className="text-[#9d9d9d] text-sm">
+                  +{section.items.length - previewCount} more...
+                </li>
+              )}
+            </ul>
           </div>
         ))}
       </div>

@@ -5,8 +5,6 @@
 //  Created by qaq on 13/12/2025.
 //
 
-import ChatClientKit
-import ExtensionKit
 import Storage
 import SwiftUI
 import TranslationUIProvider
@@ -25,18 +23,15 @@ struct TranslationProviderView: View {
     @State var translateOnAppear = true
 
     var canTranslate: Bool {
-        guard models.map(\.id).contains(selectedModelIdentifier),
-              !inputText.isEmpty
-        else { return false }
-        return true
+        selectedModel != nil && !inputText.isEmpty
     }
 
-    var model: CloudModel {
-        models.first { $0.id == selectedModelIdentifier } ?? .init(deviceId: "")
+    var selectedModel: CloudModel? {
+        models.first { $0.id == selectedModelIdentifier }
     }
 
-    var currentLocaleDescription: String {
-        Locale.current.identifier
+    var targetLanguage: String {
+        selectedLanguageHint.isEmpty ? Locale.current.identifier : selectedLanguageHint
     }
 
     init(context c: TranslationUIProviderContext) {
@@ -56,10 +51,9 @@ struct TranslationProviderView: View {
         }
         .padding(.horizontal)
         .animation(.spring, value: translationModel.translationError?.localizedDescription)
-        .animation(.spring, value: translationModel.translationReasoning)
         .animation(.spring, value: translationModel.translationPlainResult)
         .animation(.spring, value: translationModel.translationSegmentedResult)
-        .animation(.spring, value: translationModel.isTranslating ? 1 : 0)
+        .animation(.spring, value: translationModel.isTranslating)
         .animation(.spring, value: selectedModelIdentifier)
         .animation(.spring, value: selectedLanguageHint)
         .onAppear {
@@ -74,7 +68,7 @@ struct TranslationProviderView: View {
                 }
                 inputText = candidate
             }
-            if selectedModelIdentifier == "" || !models.map(\.id).contains(selectedModelIdentifier) {
+            if selectedModel == nil {
                 selectedModelIdentifier = models.first?.id ?? ""
             }
             translate()
@@ -85,7 +79,7 @@ struct TranslationProviderView: View {
     }
 
     func translate() {
-        let targetLanguage = selectedLanguageHint.isEmpty ? currentLocaleDescription : selectedLanguageHint
+        guard canTranslate, let model = selectedModel else { return }
         translationModel.translate(
             inputText: inputText,
             model: model,

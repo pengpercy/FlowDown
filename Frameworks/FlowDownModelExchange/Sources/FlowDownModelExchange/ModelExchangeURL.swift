@@ -1,6 +1,9 @@
 import Foundation
 
 public nonisolated enum ModelExchangeURL {
+    nonisolated static let routeHost = "models"
+    nonisolated static let routePath = "/exchange"
+
     public nonisolated struct Handshake: Sendable {
         public let publicKey: String
         public let callbackScheme: String
@@ -23,14 +26,17 @@ public nonisolated enum ModelExchangeURL {
     }
 
     public nonisolated static func resolve(_ url: URL) -> Stage? {
-        guard let host = url.host?.lowercased(), host == "models" else { return nil }
-        guard url.path.lowercased() == "/exchange" else { return nil }
+        guard let host = url.host?.lowercased(), host == routeHost else { return nil }
+        guard url.path.lowercased() == routePath else { return nil }
         guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
         let items = components.queryItems ?? []
-        let dict = Dictionary(uniqueKeysWithValues: items.compactMap { item -> (String, String)? in
-            guard let value = item.value else { return nil }
-            return (item.name.lowercased(), value)
-        })
+        let dict = Dictionary(
+            items.compactMap { item -> (String, String)? in
+                guard let value = item.value else { return nil }
+                return (item.name.lowercased(), value)
+            },
+            uniquingKeysWith: { first, _ in first }
+        )
 
         if let stage = dict["stage"], stage.lowercased() == "cancelled" {
             return .cancelled(session: dict["session"])
@@ -43,7 +49,7 @@ public nonisolated enum ModelExchangeURL {
         guard let session = dict["session"],
               let appName = dict["app_name"],
               let reason = dict["reason"],
-              let multipleSelection = dict["multiple_selection"].flatMap({ $0.lowercased() == "true" }),
+              let multipleSelection = dict["multiple_selection"].map({ $0.lowercased() == "true" }),
               let timestampString = dict["timestamp"],
               let timestampValue = TimeInterval(timestampString)
         else { return nil }
@@ -51,7 +57,7 @@ public nonisolated enum ModelExchangeURL {
         let rawCapabilities = dict["capabilities"] ?? ""
         let rawList = rawCapabilities.split(separator: ",").map(String.init)
         let caps = rawList.compactMap { ModelExchangeCapability(rawValue: $0) }
-        if !rawList.isEmpty, caps.count != rawList.count { return nil }
+        if caps.count != rawList.count { return nil }
         let signature = dict["sig"]
         let exchange = Exchange(
             session: session,

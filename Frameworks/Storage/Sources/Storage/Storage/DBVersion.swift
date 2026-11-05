@@ -14,4 +14,5 @@ enum DBVersion: Int, CaseIterable {
     case Version5 = 5
     case Version6 = 6
     case Version7 = 7
+    case Version8 = 8
 }

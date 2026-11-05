@@ -7,7 +7,6 @@ This script adds missing English localizations and fixes 'new' state translation
 import sys
 
 from i18n_tools import (
-    DEFAULT_KEEP_LANGUAGES,
     default_file_path,
     load_strings,
     print_update_summary,
@@ -133,6 +132,14 @@ NEW_STRINGS: dict[str, dict[str, str]] = {
         "ko": "Bearer 토큰",
         "zh-Hans": "Bearer 令牌",
     },
+    "Delete All": {
+        "de": "Alle löschen",
+        "es": "Eliminar todo",
+        "fr": "Tout supprimer",
+        "ja": "すべて削除",
+        "ko": "모두 삭제",
+        "zh-Hans": "全部删除",
+    },
     "Edit Authorization (Optional)": {
         "de": "Autorisierung bearbeiten (optional)",
         "es": "Editar autorización (opcional)",
@@ -236,7 +243,6 @@ if __name__ == "__main__":
     counts = update_missing_translations(
         data,
         new_strings=NEW_STRINGS,
-        keep_languages=DEFAULT_KEEP_LANGUAGES,
     )
     save_strings(file_path, data)
 

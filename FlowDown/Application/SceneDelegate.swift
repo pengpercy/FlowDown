@@ -19,7 +19,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     lazy var mainController = MainController()
 
     func scene(
-        _ scene: UIScene, willConnectTo _: UISceneSession,
+        _ scene: UIScene,
+        willConnectTo _: UISceneSession,
         options connectionOptions: UIScene.ConnectionOptions,
     ) {
         guard let windowScene = (scene as? UIWindowScene) else { return }
@@ -43,6 +44,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
             ModelExchangeCoordinator.shared.registerPresenter(mainController)
             UIUserInterfaceStyle.reapplyConfiguredStyle()
+            #if targetEnvironment(macCatalyst)
+                confirmClosureWhileConversationsRun(in: windowScene)
+            #endif
 
             for urlContext in connectionOptions.urlContexts {
                 handleIncomingURL(urlContext.url)
@@ -61,6 +65,13 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     func sceneWillEnterForeground(_: UIScene) {
         guard !RecoveryMode.isActivated else { return }
         UIUserInterfaceStyle.reapplyConfiguredStyle()
+    }
+
+    /// Pairs with `sceneWillResignActive`. A resign does not always reach the
+    /// background (Control Center, a system alert, Cmd+Tab on Mac), so the
+    /// restore must run on become-active, not on will-enter-foreground.
+    func sceneDidBecomeActive(_: UIScene) {
+        guard !RecoveryMode.isActivated else { return }
         MLX.GPU.onApplicationBecomeActivate()
         #if canImport(ActivityKit) && os(iOS) && !targetEnvironment(macCatalyst)
             if #available(iOS 16.2, *) {
@@ -93,6 +104,35 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 }
 
+#if targetEnvironment(macCatalyst)
+    private extension SceneDelegate {
+        /// The window's close button and Dock > Quit go through AppKit and never
+        /// reach `AppDelegate.performClose(_:)` or `terminate(_:)`, so they skip
+        /// the exit confirmation those show. From macOS 27 the system shows the
+        /// scene's `closureConfirmation` on both paths, so keep it set while a
+        /// conversation runs.
+        func confirmClosureWhileConversationsRun(in windowScene: UIWindowScene) {
+            #if compiler(>=6.4)
+                guard #available(iOS 27.0, macCatalyst 27.0, *) else { return }
+                ConversationSessionManager.shared.executingSessionsPublisher
+                    .map { !$0.isEmpty }
+                    .removeDuplicates()
+                    .receive(on: DispatchQueue.main)
+                    .sink { [weak windowScene] isExecuting in
+                        windowScene?.closureConfirmation = isExecuting
+                            ? UISceneClosureConfirmation(
+                                title: String(localized: "Exit"),
+                                message: String(localized: "Exiting now will interrupt the running conversation."),
+                                actions: [],
+                            )
+                            : nil
+                    }
+                    .store(in: &cancellables)
+            #endif
+        }
+    }
+#endif
+
 private extension SceneDelegate {
     func handleIncomingURL(_ url: URL) {
         switch url.scheme {
@@ -104,7 +144,7 @@ private extension SceneDelegate {
                 importTemplate(from: url)
             case "fdmcp":
                 importMCPServer(from: url)
-            default: break // dont know how
+            default: break
             }
         case "flowdown":
             handleFlowDownURL(url)
@@ -133,6 +173,12 @@ private extension SceneDelegate {
         _ = url.startAccessingSecurityScopedResource()
         defer { url.stopAccessingSecurityScopedResource() }
         try? FileManager.default.startDownloadingUbiquitousItem(at: url)
+        let fail: @MainActor (Error) -> Void = { error in
+            Logger.app.errorFile("failed to import template from URL: \(url), error: \(error)")
+            self.mainController.queueBootMessage(
+                text: "Failed to import template: \(error.localizedDescription)",
+            )
+        }
         do {
             let data = try Data(contentsOf: url)
             Task { @MainActor in
@@ -140,17 +186,11 @@ private extension SceneDelegate {
                     let template = try ChatTemplateManager.shared.importTemplate(from: data)
                     mainController.queueBootMessage(text: "Successfully imported \(template.name)")
                 } catch {
-                    Logger.app.errorFile("failed to import template from URL: \(url), error: \(error)")
-                    mainController.queueBootMessage(
-                        text: "Failed to import template: \(error.localizedDescription)",
-                    )
+                    fail(error)
                 }
             }
         } catch {
-            Logger.app.errorFile("failed to import template from URL: \(url), error: \(error)")
-            mainController.queueBootMessage(
-                text: "Failed to import template: \(error.localizedDescription)",
-            )
+            fail(error)
         }
     }
 
@@ -158,6 +198,12 @@ private extension SceneDelegate {
         _ = url.startAccessingSecurityScopedResource()
         defer { url.stopAccessingSecurityScopedResource() }
         try? FileManager.default.startDownloadingUbiquitousItem(at: url)
+        let fail: @MainActor (Error) -> Void = { error in
+            Logger.app.errorFile("failed to import MCP server from URL: \(url), error: \(error)")
+            self.mainController.queueBootMessage(
+                text: "Failed to import MCP server: \(error.localizedDescription)",
+            )
+        }
         do {
             let data = try Data(contentsOf: url)
             Task { @MainActor in
@@ -174,17 +220,11 @@ private extension SceneDelegate {
                         text: "Successfully imported MCP server \(serverName)",
                     )
                 } catch {
-                    Logger.app.errorFile("failed to import MCP server from URL: \(url), error: \(error)")
-                    mainController.queueBootMessage(
-                        text: "Failed to import MCP server: \(error.localizedDescription)",
-                    )
+                    fail(error)
                 }
             }
         } catch {
-            Logger.app.errorFile("failed to import MCP server from URL: \(url), error: \(error)")
-            mainController.queueBootMessage(
-                text: "Failed to import MCP server: \(error.localizedDescription)",
-            )
+            fail(error)
         }
     }
 
@@ -198,18 +238,22 @@ private extension SceneDelegate {
             }
             return
         }
-        guard let host = url.host(), !host.isEmpty else { return }
-        switch host {
-        case "new": handleNewMessageURL(url)
-        default: break
-        }
-    }
-
-    func handleNewMessageURL(_ url: URL) {
-        let pathComponents = url.pathComponents
-        guard pathComponents.count >= 2 else { return }
-        let encodedMessage = pathComponents[1]
-        let message = encodedMessage.removingPercentEncoding?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard url.host() == "new" else { return }
+        guard let message = Self.newConversationMessage(from: url) else { return }
         mainController.queueNewConversation(text: message, shouldSend: !message.isEmpty)
+    }
+}
+
+extension SceneDelegate {
+    /// Reads the message of a `flowdown://new/<message>` link.
+    ///
+    /// `pathComponents` is already decoded, so decoding it again drops a
+    /// message with a bare "%" and rewrites literal "%xx" text. Decode the
+    /// raw path once instead, which also keeps any "/" in the message.
+    static func newConversationMessage(from url: URL) -> String? {
+        guard url.pathComponents.count >= 2 else { return nil }
+        let encodedMessage = String(url.path(percentEncoded: true).dropFirst())
+        let message = encodedMessage.removingPercentEncoding ?? encodedMessage
+        return message.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

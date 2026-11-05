@@ -290,7 +290,9 @@ enum AudioTranscoder {
                             format: output.fileExtension,
                         ))
                     } catch {
-                        continuation.resume(throwing: AudioTranscoderError.readerWriterFailed(error.localizedDescription))
+                        continuation.resume(
+                            throwing: AudioTranscoderError.readerWriterFailed(error.localizedDescription)
+                        )
                     }
                 }
             }
@@ -310,7 +312,10 @@ enum AudioTranscoder {
                 while writerInputBox.value.isReadyForMoreMediaData {
                     if let buffer = readerOutputBox.value.copyNextSampleBuffer() {
                         if !writerInputBox.value.append(buffer) {
-                            finish(with: writerBox.value.error ?? AudioTranscoderError.readerWriterFailed("Failed to append audio sample"))
+                            finish(
+                                with: writerBox.value.error
+                                    ?? AudioTranscoderError.readerWriterFailed("Failed to append audio sample")
+                            )
                             return
                         }
                     } else {
@@ -319,7 +324,10 @@ enum AudioTranscoder {
                             if writerBox.value.status == .completed {
                                 finish(with: nil)
                             } else {
-                                finish(with: writerBox.value.error ?? AudioTranscoderError.readerWriterFailed("Writer failed"))
+                                finish(
+                                    with: writerBox.value.error
+                                        ?? AudioTranscoderError.readerWriterFailed("Writer failed")
+                                )
                             }
                         }
                         break
@@ -439,11 +447,9 @@ enum AudioTranscoder {
         return seconds.isFinite ? seconds : 0
     }
 
-    private static func readExportedData(
-        from url: URL,
-        retries: Int = 20,
-        delay: Duration = .milliseconds(50),
-    ) async throws -> Data {
+    private static func readExportedData(from url: URL) async throws -> Data {
+        let retries = 20
+        let delay: Duration = .milliseconds(50)
         var lastError: Error?
 
         for attempt in 0 ..< retries {
@@ -479,9 +485,6 @@ enum AudioTranscoder {
                 switch sessionBox.value.status {
                 case .completed:
                     continuation.resume(returning: ())
-                case .failed:
-                    let message = sessionBox.value.error?.localizedDescription ?? "Unknown Error"
-                    continuation.resume(throwing: AudioTranscoderError.exportFailed(message))
                 case .cancelled:
                     continuation.resume(throwing: AudioTranscoderError.exportFailed("Cancelled"))
                 default:

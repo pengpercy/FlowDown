@@ -92,9 +92,12 @@ extension SettingController.SettingContent.ModelController {
                         image: .init(systemName: "arrow.down.doc"),
                     ) { [weak self] _ in
                         guard let self else { return }
-                        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [
-                            .zip, .propertyList, UTType(filenameExtension: "fdmodel") ?? .data,
-                        ], asCopy: true)
+                        let picker = UIDocumentPickerViewController(
+                            forOpeningContentTypes: [
+                                .zip, .propertyList, UTType(filenameExtension: "fdmodel") ?? .data,
+                            ],
+                            asCopy: true
+                        )
                         picker.title = String(localized: "Import Model")
                         picker.delegate = self
                         picker.allowsMultipleSelection = true
@@ -264,9 +267,5 @@ extension SettingController.SettingContent.ModelController {
                 ),
             )
         }
-    }
-
-    func createModelMenu(for itemIdentifier: ModelViewModel) -> UIMenu {
-        UIMenu(children: createModelMenuElements(for: itemIdentifier))
     }
 }

@@ -8,7 +8,7 @@
 import Foundation
 import WCDBSwift
 
-public final class Memory: Identifiable, Codable, TableNamed, DeviceOwned, TableCodable {
+public final class Memory: Identifiable, Codable, TableNamed, TableCodable {
     public static let tableName: String = "Memory"
 
     public var id: String {
@@ -65,7 +65,10 @@ public final class Memory: Identifiable, Codable, TableNamed, DeviceOwned, Table
 
 extension Memory: Updatable {
     @discardableResult
-    public func update<Value: Equatable>(_ keyPath: ReferenceWritableKeyPath<Memory, Value>, to newValue: Value) -> Bool {
+    public func update<Value: Equatable>(
+        _ keyPath: ReferenceWritableKeyPath<Memory, Value>,
+        to newValue: Value
+    ) -> Bool {
         let oldValue = self[keyPath: keyPath]
         guard oldValue != newValue else { return false }
         assign(keyPath, to: newValue)
@@ -74,11 +77,6 @@ extension Memory: Updatable {
 
     public func assign<Value>(_ keyPath: ReferenceWritableKeyPath<Memory, Value>, to newValue: Value) {
         self[keyPath: keyPath] = newValue
-        markModified()
-    }
-
-    package func update(_ block: (Memory) -> Void) {
-        block(self)
         markModified()
     }
 }

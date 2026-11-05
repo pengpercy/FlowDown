@@ -106,9 +106,6 @@ class RichEditorView: EditorSectionView {
     ]
 
     let spacing: CGFloat = 10
-    var keyboardAdditionalHeight: CGFloat = 0 {
-        didSet { setNeedsLayout() }
-    }
 
     static var didRequestAutomaticModelSelection = false
 
@@ -242,7 +239,7 @@ class RichEditorView: EditorSectionView {
         dropContainer.frame = shadowContainer.frame
         dropColorView.frame = dropContainer.bounds
 
-        heightPublisher.send(finalHeight + keyboardAdditionalHeight + spacing)
+        heightPublisher.send(finalHeight + spacing)
     }
 
     func updateHeightConstraint(_ height: CGFloat) {
@@ -275,10 +272,6 @@ class RichEditorView: EditorSectionView {
         inputEditor.textView.becomeFirstResponder()
     }
 
-    func updateModelName() {
-        updateModelinfoFile()
-    }
-
     private var shadowStyle: RichEditorShadowStyle {
         .resolve(handlerColor: handlerColor)
     }
@@ -303,12 +296,17 @@ class RichEditorView: EditorSectionView {
     func prepareForReuse() {
         storage = .init(id: "-1")
         resetValues()
-        updateModelName()
+        updateModelinfoFile()
     }
 
     func use(identifier: String) {
         storage = .init(id: identifier)
+        // Refreshing the model can flip the tools toggle, which publishes the
+        // editor contents. They still belong to the previous conversation here,
+        // so hold publishing until this conversation's draft has been restored.
+        objectTransactionInProgress = true
         updateModelinfoFile(postUpdate: false)
+        objectTransactionInProgress = false
         restoreEditorStatusIfPossible()
     }
 
@@ -319,11 +317,8 @@ class RichEditorView: EditorSectionView {
 
     /// used when requesting retry, inherit current option toggles
     func collectObject() -> Object {
-        var text = (inputEditor.textView.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = (inputEditor.textView.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let attachments = attachmentsBar.attachmetns.values
-        if text.isEmpty, !attachments.isEmpty {
-            text = String(localized: "Attached \(attachments.count) Documents")
-        }
         return Object(
             text: text,
             attachments: .init(attachments),

@@ -59,7 +59,7 @@ class ChatView: UIView {
 
     @TypedStorage(key: "Chat.Editor.Model.Name.Style", defaultValue: EditorModelNameStyle.trimmed)
     var editorModelNameStyle: EditorModelNameStyle {
-        didSet { editor.updateModelName() }
+        didSet { editor.updateModelinfoFile() }
     }
 
     @TypedStorage(key: "Chat.Editor.Model.Apply.Default", defaultValue: true)
@@ -92,13 +92,19 @@ class ChatView: UIView {
         editor.snp.makeConstraints { make in
             #if targetEnvironment(macCatalyst)
                 make.bottom.equalToSuperview()
+                make.centerX.equalToSuperview()
+                make.width.lessThanOrEqualTo(750)
+                make.width.lessThanOrEqualToSuperview()
+                make.width.equalToSuperview().priority(.low)
             #else
+                // Kept between the side insets too: an iPhone Duo keeps the
+                // clock and the camera in a column along one side.
                 make.bottom.equalTo(safeAreaLayoutGuide)
+                make.centerX.equalTo(safeAreaLayoutGuide)
+                make.width.lessThanOrEqualTo(750)
+                make.width.lessThanOrEqualTo(safeAreaLayoutGuide)
+                make.width.equalTo(safeAreaLayoutGuide).priority(.low)
             #endif
-            make.centerX.equalToSuperview()
-            make.width.lessThanOrEqualTo(750)
-            make.width.lessThanOrEqualToSuperview()
-            make.width.equalToSuperview().priority(.low)
         }
 
         editorBackgroundView.snp.makeConstraints { make in
@@ -112,6 +118,7 @@ class ChatView: UIView {
         }
 
         sessionManager.executingSessionsPublisher
+            .ensureMainThread()
             .sink { [weak self] executingSessions in
                 guard let self, let conversationID = conversationIdentifier else { return }
                 let isExecuting = executingSessions.contains(conversationID)
@@ -172,7 +179,7 @@ class ChatView: UIView {
         ModelManager.shared.modelChangedPublisher
             .ensureMainThread()
             .sink { [weak self] _ in
-                self?.editor.updateModelName()
+                self?.editor.updateModelinfoFile()
             }
             .store(in: &cancellables)
 
@@ -209,8 +216,14 @@ class ChatView: UIView {
     }
 
     func prepareForReuse() {
-        // Removes the current message list view from the superview.
-        currentMessageListView?.removeFromSuperview()
+        if let conversationIdentifier, sessionManager.isSessionExecuting(conversationIdentifier) {
+            // A running stream anchors its tool confirmations to this list view,
+            // so it stays in the view hierarchy and is only hidden.
+            currentMessageListView?.isHidden = true
+        } else {
+            // Removes the current message list view from the superview.
+            currentMessageListView?.removeFromSuperview()
+        }
         conversationIdentifier = nil
         editor.prepareForReuse()
     }
@@ -235,9 +248,19 @@ class ChatView: UIView {
         // ConversationSessionManager.shared.resolvePendingRefresh(for: conversation)
 
         if let listView = currentMessageListView {
-            insertSubview(listView, belowSubview: editorBackgroundView)
-            listView.snp.makeConstraints { make in
-                make.edges.equalToSuperview()
+            // A list view kept attached while hidden already has its constraints.
+            if listView.superview !== self {
+                insertSubview(listView, belowSubview: editorBackgroundView)
+                listView.snp.makeConstraints { make in
+                    #if targetEnvironment(macCatalyst)
+                        make.edges.equalToSuperview()
+                    #else
+                        // Scrolls under the title bar and the editor, but
+                        // stays out of the side insets.
+                        make.top.bottom.equalToSuperview()
+                        make.left.right.equalTo(safeAreaLayoutGuide)
+                    #endif
+                }
             }
             listView.isHidden = false
         }
@@ -331,7 +354,6 @@ extension ChatView {
             let backgroundContainer = ChatHeaderGlassBackgroundContainerView()
         #endif
 
-        let rightClick = RightClickFinder()
         var cancellables: Set<AnyCancellable> = .init()
 
         var onCreateNewChat: (() -> Void)?
@@ -454,13 +476,20 @@ extension ChatView {
             override func layoutSubviews() {
                 super.layoutSubviews()
 
-                let safeTop = safeAreaInsets.top
+                // The bar's background spans the whole width; its controls
+                // stay inside the safe area on every side.
+                let insets = safeAreaInsets
                 backgroundContainer.frame = CGRect(
-                    x: 0,
-                    y: safeTop,
-                    width: bounds.width,
-                    height: max(0, bounds.height - safeTop),
+                    x: insets.left,
+                    y: insets.top,
+                    width: max(0, bounds.width - insets.left - insets.right),
+                    height: max(0, bounds.height - insets.top),
                 )
+            }
+
+            override func safeAreaInsetsDidChange() {
+                super.safeAreaInsetsDidChange()
+                setNeedsLayout()
             }
         #endif
 
@@ -504,20 +533,14 @@ extension ChatView {
             }
         }
 
-        func contextMenuInteraction(
-            _: UIContextMenuInteraction,
-            configurationForMenuAtLocation _: CGPoint,
-        ) -> UIContextMenuConfiguration? {
-            UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
-                self?.buildMenu()
-            }
-        }
-
         private func buildMenu() -> UIMenu? {
             guard let conv else { return nil }
+            // The menu only opens from this button, so anything it presents
+            // (the icon picker popover, a share sheet) points back at it
+            // rather than at the middle of the full-width title bar.
             guard let convMenu = ConversationManager.shared.menu(
                 forConversation: conv,
-                view: self,
+                view: menuButton,
             ) else { return nil }
 
             #if targetEnvironment(macCatalyst)
@@ -545,23 +568,14 @@ extension ChatView {
                     let templates = ChatTemplateManager.shared.templates
                     var newChatOptions: [UIMenuElement] = []
 
-                    if templates.isEmpty {
-                        // No templates, just show "Start New Chat"
-                        newChatOptions.append(UIAction(
-                            title: String(localized: "Start New Chat"),
-                            image: UIImage(systemName: "plus"),
-                        ) { [weak self] _ in
-                            self?.onCreateNewChat?()
-                        })
-                    } else {
-                        // Show template options
-                        newChatOptions.append(UIAction(
-                            title: String(localized: "Start New Chat"),
-                            image: UIImage(systemName: "plus"),
-                        ) { [weak self] _ in
-                            self?.onCreateNewChat?()
-                        })
+                    newChatOptions.append(UIAction(
+                        title: String(localized: "Start New Chat"),
+                        image: UIImage(systemName: "plus"),
+                    ) { [weak self] _ in
+                        self?.onCreateNewChat?()
+                    })
 
+                    if !templates.isEmpty {
                         var templatesMenuActions: [UIAction] = []
                         for template in templates.values {
                             templatesMenuActions.append(UIAction(

@@ -113,6 +113,7 @@ final class EvaluationCaseDetailController: StackScrollController {
         )
 
         navigationItem.rightBarButtonItem = UIBarButtonItem(
+            title: String(localized: "Actions"),
             image: UIImage(systemName: "ellipsis.circle"),
             menu: menu,
         )
@@ -215,7 +216,8 @@ final class EvaluationCaseDetailController: StackScrollController {
         }
         stackView.addArrangedSubview(SeparatorView())
         stackView.addArrangedSubviewWithMargin(
-            ConfigurableSectionFooterView().with(footer: String(localized: "You can also use the Actions menu to re-run or delete.")),
+            ConfigurableSectionFooterView()
+                .with(footer: String(localized: "You can also use the Actions menu to re-run or delete.")),
         ) { $0.top /= 2 }
         stackView.addArrangedSubview(SeparatorView())
     }

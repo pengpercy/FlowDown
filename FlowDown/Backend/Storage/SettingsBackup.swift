@@ -40,6 +40,11 @@ enum SettingsBackup {
 
     private static let decoder = JSONDecoder()
 
+    /// Device-local JSON values that share the settings suite but are not preferences.
+    /// `FlowDownSyncEngineState` must match `SyncEngine.SyncEngineStateKey` in the Storage framework,
+    /// which holds the CKSyncEngine state serialization for this device.
+    private static let excludedKeys: Set<String> = ["FlowDownSyncEngineState"]
+
     static func export(storage: KeyValueStorage = ConfigurableKit.storage) throws -> URL {
         let storage = try userDefaultsStorage(from: storage)
         let items = try collectConfigurableItems(from: storage)
@@ -78,7 +83,7 @@ enum SettingsBackup {
             storage.setValue(nil, forKey: key)
         }
 
-        for item in payload.items {
+        for item in payload.items where !excludedKeys.contains(item.key) {
             storage.setValue(item.data, forKey: item.key)
         }
     }
@@ -92,7 +97,9 @@ private extension SettingsBackup {
         return storage
     }
 
-    static func collectConfigurableItems(from storage: UserDefaultKeyValueStorage) throws -> [SettingsBackupPayload.Item] {
+    static func collectConfigurableItems(
+        from storage: UserDefaultKeyValueStorage
+    ) throws -> [SettingsBackupPayload.Item] {
         let suite = storage.exposedSuite
         let prefix = storage.exposedPrefix
         let dictionary = suite.dictionaryRepresentation()
@@ -102,6 +109,7 @@ private extension SettingsBackup {
             guard let data = value as? Data else { continue }
             guard isConfigurableValue(data) else { continue }
             guard let key = normalize(storedKey: storedKey, prefix: prefix) else { continue }
+            guard !excludedKeys.contains(key) else { continue }
             items.append(.init(key: key, data: data))
         }
         return items

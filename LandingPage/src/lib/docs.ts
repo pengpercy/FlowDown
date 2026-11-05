@@ -5,14 +5,13 @@ export interface DocEntry {
   slug: string[];
   section: string;
   title: string;
-  description: string;
-  content: string;
 }
 
 const docsRoot = path.join(process.cwd(), "src", "app", "docs", "documents");
 
-const isMarkdownFile = (fileName: string) =>
-  fileName.endsWith(".md") || fileName.endsWith(".mdx");
+const markdownExtension = /\.(md|mdx)$/;
+
+const isMarkdownFile = (fileName: string) => markdownExtension.test(fileName);
 
 const stripMarkdown = (value: string) =>
   value
@@ -59,10 +58,8 @@ const extractDescription = (content: string) => {
   return "FlowDown documentation.";
 };
 
-const readDocFile = (filePath: string) => fs.readFileSync(filePath, "utf8");
-
 const toSlug = (relativePath: string) =>
-  relativePath.replace(/\.(md|mdx)$/i, "").split(path.sep);
+  relativePath.replace(markdownExtension, "").split(path.sep);
 
 const toSection = (slug: string[]) => (slug.length > 1 ? slug[0] : "root");
 
@@ -101,32 +98,25 @@ export const fixImagePaths = (content: string) => {
   );
 };
 
-export const getAllDocs = (): DocEntry[] => {
-  const files = walkFiles(docsRoot);
+const docSlugs = () =>
+  walkFiles(docsRoot).map((filePath) => ({
+    filePath,
+    slug: toSlug(path.relative(docsRoot, filePath)),
+  }));
 
-  return files.map((filePath) => {
-    const relative = path.relative(docsRoot, filePath);
-    const slug = toSlug(relative);
-    const content = readDocFile(filePath);
+export const getAllDocs = (): DocEntry[] =>
+  docSlugs().map(({ filePath, slug }) => {
+    const content = fs.readFileSync(filePath, "utf8");
     const title = extractTitle(content);
-    const description = extractDescription(content);
 
     return {
       slug,
       section: toSection(slug),
       title,
-      description,
-      content,
     };
   });
-};
 
-export const getAllDocPaths = () => {
-  const files = walkFiles(docsRoot);
-  return files.map((filePath) => ({
-    slug: toSlug(path.relative(docsRoot, filePath)),
-  }));
-};
+export const getAllDocPaths = () => docSlugs().map(({ slug }) => ({ slug }));
 
 export const getDocBySlug = (slug: string[]) => {
   const relativePath = slug.join(path.sep);
@@ -140,13 +130,11 @@ export const getDocBySlug = (slug: string[]) => {
     return null;
   }
 
-  const content = readDocFile(filePath);
+  const content = fs.readFileSync(filePath, "utf8");
   const title = extractTitle(content);
   const description = extractDescription(content);
 
   return {
-    slug,
-    section: toSection(slug),
     title,
     description,
     content,

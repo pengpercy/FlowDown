@@ -70,16 +70,23 @@ class EvaluationHistoryController: UIViewController {
             target: self,
             action: #selector(deleteAllTapped),
         )
+        item.title = String(localized: "Delete All")
         item.tintColor = .systemRed
         return item
     }()
 
-    private lazy var importBarButtonItem: UIBarButtonItem = .init(
-        title: String(localized: "Import"),
-        style: .plain,
-        target: self,
-        action: #selector(importTapped),
-    )
+    private lazy var importBarButtonItem: UIBarButtonItem = {
+        // A symbol lets the item join a vertical bar, the title labels it in
+        // the overflow menu.
+        let item = UIBarButtonItem(
+            image: UIImage(systemName: "square.and.arrow.down"),
+            style: .plain,
+            target: self,
+            action: #selector(importTapped),
+        )
+        item.title = String(localized: "Import")
+        return item
+    }()
 
     @objc private func importTapped() {
         presentSessionImportPicker(from: self)
@@ -107,8 +114,8 @@ class EvaluationHistoryController: UIViewController {
                     } catch {
                         Logger.app.errorFile("failed to delete all evaluation sessions: \(error)")
                         let errorAlert = AlertViewController(
-                            title: String(localized: "Error"),
-                            message: error.localizedDescription,
+                            title: "Error",
+                            message: .init(error.localizedDescription),
                         ) { context in
                             context.allowSimpleDispose()
                             context.addAction(title: "OK", attribute: .accent) {
@@ -170,7 +177,10 @@ extension EvaluationHistoryController: UITableViewDelegate {
         tableView.deselectRow(at: indexPath, animated: true)
     }
 
-    func tableView(_: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+    func tableView(
+        _: UITableView,
+        trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath
+    ) -> UISwipeActionsConfiguration? {
         guard let id = dataSource.itemIdentifier(for: indexPath) else { return nil }
         let delete = UIContextualAction(
             style: .destructive,
@@ -273,8 +283,8 @@ private extension EvaluationHistoryController {
 
                 if let firstError = failure.first {
                     let alert = AlertViewController(
-                        title: String(localized: "Import Failed"),
-                        message: firstError.localizedDescription,
+                        title: "Import Failed",
+                        message: .init(firstError.localizedDescription),
                     ) { context in
                         context.allowSimpleDispose()
                         context.addAction(title: "OK", attribute: .accent) {

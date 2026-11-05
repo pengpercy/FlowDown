@@ -68,6 +68,7 @@ class ChatTemplateListController: UIViewController {
         }
 
         navigationItem.rightBarButtonItem = UIBarButtonItem(
+            title: String(localized: "Add"),
             image: UIImage(systemName: "plus"),
             menu: UIMenu(children: createAddTemplateMenuItems()),
         )
@@ -131,7 +132,10 @@ class ChatTemplateListController: UIViewController {
 }
 
 extension ChatTemplateListController: UITableViewDelegate {
-    func tableView(_: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+    func tableView(
+        _: UITableView,
+        trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath
+    ) -> UISwipeActionsConfiguration? {
         guard let itemIdentifier = dataSource.itemIdentifier(for: indexPath) else {
             return nil
         }
@@ -257,7 +261,7 @@ extension ChatTemplateListController: UIDocumentPickerDelegate {
                 if !failure.isEmpty {
                     let alert = AlertViewController(
                         title: "Import Failed",
-                        message: String(localized: "\(success) templates imported successfully, \(failure.count) failed."),
+                        message: "\(success) templates imported successfully, \(failure.count) failed.",
                     ) { context in
                         context.allowSimpleDispose()
                         context.addAction(title: "OK", attribute: .accent) {
@@ -336,7 +340,11 @@ extension ChatTemplateListController: UITableViewDragDelegate, UITableViewDropDe
         ChatTemplateManager.shared.reorderTemplates(newOrder)
     }
 
-    func tableView(_: UITableView, dropSessionDidUpdate session: UIDropSession, withDestinationIndexPath _: IndexPath?) -> UITableViewDropProposal {
+    func tableView(
+        _: UITableView,
+        dropSessionDidUpdate session: UIDropSession,
+        withDestinationIndexPath _: IndexPath?
+    ) -> UITableViewDropProposal {
         if session.localDragSession != nil {
             return UITableViewDropProposal(operation: .move, intent: .insertAtDestinationIndexPath)
         } else if session.hasItemsConforming(toTypeIdentifiers: [fdTemplateTypeIdentifier]) {

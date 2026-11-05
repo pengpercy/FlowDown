@@ -13,18 +13,6 @@ import Storage
 import UIKit
 
 extension ModelManager {
-    private func openModelManagementPage(controller: UIViewController?) {
-        guard let controller else { return }
-        if let nav = controller.navigationController {
-            let controller = SettingController.SettingContent.ModelController()
-            nav.pushViewController(controller, animated: true)
-        } else {
-            let setting = SettingController()
-            SettingController.setNextEntryPage(.modelManagement)
-            controller.present(setting, animated: true)
-        }
-    }
-
     func buildModelSelectionMenu(
         currentSelection: ModelIdentifier? = nil,
         requiresCapabilities: Set<ModelCapabilities> = [],
@@ -204,7 +192,8 @@ extension ModelManager {
                 allowSelectionWithNone: !Self.ModelIdentifier.defaultModelForAuxiliaryTask.isEmpty,
                 onCompletion: { identifier in
                     Self.ModelIdentifier.defaultModelForAuxiliaryTask = identifier
-                }, includeQuickActions: false,
+                },
+                includeQuickActions: false,
             )
             let taskModelSelect = UIMenu(
                 title: String(localized: "Task Model"),
@@ -218,7 +207,8 @@ extension ModelManager {
                 allowSelectionWithNone: !Self.ModelIdentifier.defaultModelForAuxiliaryVisualTask.isEmpty,
                 onCompletion: { identifier in
                     Self.ModelIdentifier.defaultModelForAuxiliaryVisualTask = identifier
-                }, includeQuickActions: false,
+                },
+                includeQuickActions: false,
             )
             let auxVisionModelSelect = UIMenu(
                 title: String(localized: "Auxiliary Visual Model"),

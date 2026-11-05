@@ -3,17 +3,18 @@ import Navigation from "@/components/sections/Navigation";
 import { Sidebar, MobileNav } from "@/components/docs";
 import { getDocsConfig } from "@/lib/docs-config";
 
+const description =
+  "FlowDown documentation - Learn how to use FlowDown, a privacy-first AI workspace for iOS and macOS.";
+
 export const metadata: Metadata = {
   title: {
     template: "%s | FlowDown Docs",
     default: "FlowDown Documentation",
   },
-  description:
-    "FlowDown documentation - Learn how to use FlowDown, a privacy-first AI workspace for iOS and macOS.",
+  description,
   openGraph: {
     title: "FlowDown Documentation",
-    description:
-      "FlowDown documentation - Learn how to use FlowDown, a privacy-first AI workspace for iOS and macOS.",
+    description,
     type: "website",
   },
 };
@@ -23,7 +24,7 @@ export default function DocsRootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const config = getDocsConfig();
+  const sections = getDocsConfig();
 
   return (
     <div className="h-screen flex flex-col bg-[#f6f6f6] overflow-hidden">
@@ -31,7 +32,7 @@ export default function DocsRootLayout({
 
       <div className="flex flex-1 pt-[72px] overflow-hidden">
         <div className="hidden lg:block h-full">
-          <Sidebar items={config.sidebarNav} />
+          <Sidebar items={sections} />
         </div>
 
         <main className="flex-1 min-w-0 overflow-y-auto">
@@ -40,7 +41,7 @@ export default function DocsRootLayout({
           </div>
         </main>
 
-        <MobileNav items={config.sidebarNav} />
+        <MobileNav items={sections} />
       </div>
     </div>
   );

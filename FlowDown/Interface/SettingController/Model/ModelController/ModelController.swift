@@ -112,8 +112,16 @@ extension SettingController.SettingContent {
                     Task { @MainActor in delete() }
                 }
 
-                let verifySection = UIMenu(title: "", options: [.displayInline], children: [verifyAction, evaluateAction])
-                let utilitySection = UIMenu(title: "", options: [.displayInline], children: [openHuggingFaceAction, exportAction])
+                let verifySection = UIMenu(
+                    title: "",
+                    options: [.displayInline],
+                    children: [verifyAction, evaluateAction]
+                )
+                let utilitySection = UIMenu(
+                    title: "",
+                    options: [.displayInline],
+                    children: [openHuggingFaceAction, exportAction]
+                )
                 let deleteSection = UIMenu(title: "", options: [.displayInline], children: [deleteAction])
 
                 return [newChatSection, verifySection, utilitySection, deleteSection]
@@ -153,8 +161,16 @@ extension SettingController.SettingContent {
                     Task { @MainActor in delete() }
                 }
 
-                let verifySection = UIMenu(title: "", options: [.displayInline], children: [verifyAction, evaluateAction])
-                let exportSection = UIMenu(title: "", options: [.displayInline], children: [exportAction, duplicateAction])
+                let verifySection = UIMenu(
+                    title: "",
+                    options: [.displayInline],
+                    children: [verifyAction, evaluateAction]
+                )
+                let exportSection = UIMenu(
+                    title: "",
+                    options: [.displayInline],
+                    children: [exportAction, duplicateAction]
+                )
                 let deleteSection = UIMenu(title: "", options: [.displayInline], children: [deleteAction])
 
                 return [newChatSection, verifySection, exportSection, deleteSection]
@@ -241,6 +257,7 @@ extension SettingController.SettingContent {
         }
 
         lazy var addItem: UIBarButtonItem = .init(
+            title: String(localized: "Add Model"),
             image: .init(systemName: "plus"),
             menu: UIMenu(children: createAddModelMenuItems()),
         )
@@ -254,6 +271,7 @@ extension SettingController.SettingContent {
                 completion(createFilterMenuItems())
             }
             return UIBarButtonItem(
+                title: String(localized: "Filter Options"),
                 image: .init(systemName: "line.3.horizontal.decrease.circle"),
                 menu: UIMenu(title: String(localized: "Filter Options"), children: [deferredMenu]),
             )
@@ -304,14 +322,20 @@ extension SettingController.SettingContent {
             }
             if !localModels.isEmpty, showLocalModels {
                 snapshot.appendSections([.local])
-                snapshot.appendItems(localModels.map { ModelViewModel(type: .local, identifier: $0.id) }, toSection: .local)
+                snapshot.appendItems(
+                    localModels.map { ModelViewModel(type: .local, identifier: $0.id) },
+                    toSection: .local
+                )
             }
             let remoteModels = ModelManager.shared.cloudModels.value.filter {
                 searchKey.isEmpty || $0.model_identifier.localizedCaseInsensitiveContains(searchKey)
             }
             if !remoteModels.isEmpty, showCloudModels {
                 snapshot.appendSections([.cloud])
-                snapshot.appendItems(remoteModels.map { ModelViewModel(type: .cloud, identifier: $0.id) }, toSection: .cloud)
+                snapshot.appendItems(
+                    remoteModels.map { ModelViewModel(type: .cloud, identifier: $0.id) },
+                    toSection: .cloud
+                )
             }
             dataSource.apply(snapshot, animatingDifferences: true)
             updateVisibleItems()

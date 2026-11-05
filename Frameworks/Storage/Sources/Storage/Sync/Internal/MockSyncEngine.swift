@@ -13,7 +13,6 @@ package final class MockSyncEngine: SyncEngineProtocol {
     package let database: MockCloudDatabase
     package let parentSyncEngine: SyncEngine
     package let _state: LockIsolated<MockSyncEngineState>
-    package let _fetchChangesScopes = LockIsolated<[CKSyncEngine.FetchChangesOptions.Scope]>([])
     package let _delegate: LockIsolated<(any SyncEngineDelegate)?>
     package var automaticallySync: Bool {
         get {
@@ -50,10 +49,6 @@ package final class MockSyncEngine: SyncEngineProtocol {
         "\(type(of: self))"
     }
 
-    package var scope: CKDatabase.Scope {
-        database.databaseScope
-    }
-
     package var state: MockSyncEngineState {
         _state.withValue(\.self)
     }
@@ -62,14 +57,22 @@ package final class MockSyncEngine: SyncEngineProtocol {
         _delegate.withValue(\.self)
     }
 
-    package init(database: MockCloudDatabase, parentSyncEngine: SyncEngine, state: MockSyncEngineState, delegate: any SyncEngineDelegate) {
+    package init(
+        database: MockCloudDatabase,
+        parentSyncEngine: SyncEngine,
+        state: MockSyncEngineState,
+        delegate: any SyncEngineDelegate
+    ) {
         self.database = database
         self.parentSyncEngine = parentSyncEngine
         _state = LockIsolated(state)
         _delegate = LockIsolated(delegate)
     }
 
-    private func processPendingDatabaseChanges(reason: CKSyncEngine.SyncReason, options _: CKSyncEngine.SendChangesOptions) async throws {
+    private func processPendingDatabaseChanges(
+        reason: CKSyncEngine.SyncReason,
+        options _: CKSyncEngine.SendChangesOptions
+    ) async throws {
         Logger.syncEngine.infoFile("Will Processing database changes by reason: \(reason)")
         let pendingDatabaseChanges = state.pendingDatabaseChanges
         guard !pendingDatabaseChanges.isEmpty else {
@@ -98,7 +101,10 @@ package final class MockSyncEngine: SyncEngineProtocol {
 
         Logger.syncEngine.infoFile("will sent saveZone: \(recordZonesToSave) deleteZone: \(recordZoneIDsToDelete)")
 
-        let (saveResults, deleteResults) = try await database.modifyRecordZones(saving: recordZonesToSave, deleting: recordZoneIDsToDelete)
+        let (saveResults, deleteResults) = try await database.modifyRecordZones(
+            saving: recordZonesToSave,
+            deleting: recordZoneIDsToDelete
+        )
 
         if saveResults.isEmpty, deleteResults.isEmpty {
             return
@@ -146,7 +152,10 @@ package final class MockSyncEngine: SyncEngineProtocol {
         await parentSyncEngine.handleEvent(event, syncEngine: self)
     }
 
-    private func processPendingRecordZoneChanges(reason: CKSyncEngine.SyncReason, options: CKSyncEngine.SendChangesOptions) async throws {
+    private func processPendingRecordZoneChanges(
+        reason: CKSyncEngine.SyncReason,
+        options: CKSyncEngine.SendChangesOptions
+    ) async throws {
         Logger.syncEngine.infoFile("Will Processing record zone changes by reason: \(reason)")
         let pendingRecordZoneChanges = state.pendingRecordZoneChanges
         guard !pendingRecordZoneChanges.isEmpty else {
@@ -249,10 +258,6 @@ package final class MockSyncEngine: SyncEngineProtocol {
 
     package func performingFetchChanges(_: CKSyncEngine.FetchChangesOptions) async throws {}
 
-    package func nextRecordZoneChangeBatch(recordsToSave _: [CKRecord], recordIDsToDelete _: [CKRecord.ID], atomicByZone _: Bool, syncEngine _: any SyncEngineProtocol) async -> CKSyncEngine.RecordZoneChangeBatch? {
-        nil
-    }
-
     package func performingSendChanges() async throws {
         try await performingSendChanges(.init())
     }
@@ -278,11 +283,6 @@ package final class MockSyncEngineState: CKSyncEngineStateProtocol {
 
     package var pendingDatabaseChanges: [CKSyncEngine.PendingDatabaseChange] {
         _pendingDatabaseChanges.withValue { Array($0) }
-    }
-
-    package func removePendingChanges() {
-        _pendingDatabaseChanges.withValue { $0.removeAll() }
-        _pendingRecordZoneChanges.withValue { $0.removeAll() }
     }
 
     package func add(pendingRecordZoneChanges: [CKSyncEngine.PendingRecordZoneChange]) {

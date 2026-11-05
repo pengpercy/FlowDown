@@ -69,19 +69,24 @@ class ChatTemplateEditorController: StackScrollController, UITextViewDelegate {
         super.viewDidLoad()
         view.backgroundColor = .background
 
-        navigationItem.rightBarButtonItem = .init(
+        let doneItem = UIBarButtonItem(
             image: UIImage(systemName: "checkmark"),
             style: .done,
             target: self,
             action: #selector(checkTapped),
         )
-
-        navigationItem.leftBarButtonItem = .init(
+        doneItem.title = String(localized: "Done")
+        // Trailing, so the leading top of the bar stays free for a vertical bar.
+        let rewriteItem = UIBarButtonItem(
             image: UIImage(systemName: "sparkles"),
             style: .plain,
             target: self,
             action: #selector(sparklesTapped),
         )
+        rewriteItem.title = String(localized: "Rewrite")
+        navigationItem.rightBarButtonItems = [doneItem, rewriteItem]
+        // Edits are saved only by Done; Back would leave without saving them.
+        navigationItem.hidesBackButton = true
 
         ChatTemplateManager.shared.$templates
             .removeDuplicates()
@@ -123,7 +128,7 @@ class ChatTemplateEditorController: StackScrollController, UITextViewDelegate {
 
         let input = AlertInputViewController(
             title: "Rewrite",
-            message: String(localized: "You can use \(modelName) to rewrite this template, e.g., 'Add more instructions to the template.', or 'Make it more concise.'..."),
+            message: "You can use \(modelName) to rewrite this template, e.g., 'Add more instructions to the template.', or 'Make it more concise.'...",
             placeholder: "Enter instructions...",
             text: "",
         ) { [self] instructions in
@@ -231,7 +236,9 @@ class ChatTemplateEditorController: StackScrollController, UITextViewDelegate {
         promptBehaviorView.configure(icon: .init(systemName: "gear"))
         promptBehaviorView.configure(title: "Application Prompt Behavior")
         promptBehaviorView.configure(description: "Regarding whether the prompt from the application should be inherited or ignored when creating a new conversation from this template.")
-        let behaviorTitle = template.inheritApplicationPrompt ? String(localized: "Inherit") : String(localized: "Ignore")
+        let behaviorTitle = template.inheritApplicationPrompt
+            ? String(localized: "Inherit")
+            : String(localized: "Ignore")
         promptBehaviorView.configure(value: behaviorTitle)
         promptBehaviorView.use {
             [

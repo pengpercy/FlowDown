@@ -3,7 +3,6 @@ import Foundation
 
 public nonisolated enum ModelExchangeAPI {
     public nonisolated static let signatureHeader = "X-FlowDown-Signature"
-    nonisolated static let hkdfSalt = Data("flowdown-model-exchange".utf8)
 
     public nonisolated static func sign(path: String, privateKey: Curve25519.Signing.PrivateKey) throws -> String {
         let digest = sha256(path)
@@ -11,7 +10,11 @@ public nonisolated enum ModelExchangeAPI {
         return Data(signature).base64EncodedString()
     }
 
-    public nonisolated static func verify(path: String, signature: String, publicKey: Curve25519.Signing.PublicKey) -> Bool {
+    public nonisolated static func verify(
+        path: String,
+        signature: String,
+        publicKey: Curve25519.Signing.PublicKey
+    ) -> Bool {
         guard let data = Data(base64Encoded: signature) else { return false }
         return publicKey.isValidSignature(data, for: sha256(path))
     }
@@ -107,17 +110,18 @@ public nonisolated struct ModelExchangeRequestBuilder: Sendable {
     public nonisolated let callbackScheme: String
     public nonisolated let keyPair: ModelExchangeKeyPair
 
-    public nonisolated init(flowdownScheme: String = "flowdown", callbackScheme: String, keyPair: ModelExchangeKeyPair) {
+    public nonisolated init(
+        flowdownScheme: String = "flowdown",
+        callbackScheme: String,
+        keyPair: ModelExchangeKeyPair
+    ) {
         self.flowdownScheme = flowdownScheme
         self.callbackScheme = callbackScheme
         self.keyPair = keyPair
     }
 
     public nonisolated func makeHandshakeURL() -> URL? {
-        var components = URLComponents()
-        components.scheme = flowdownScheme
-        components.host = "models"
-        components.path = "/exchange"
+        var components = makeRouteComponents()
         components.queryItems = [
             .init(name: "pk", value: keyPair.encodedPublicKey),
             .init(name: "callback", value: callbackScheme),
@@ -133,10 +137,7 @@ public nonisolated struct ModelExchangeRequestBuilder: Sendable {
         multipleSelection: Bool,
         timestamp: Date = .init(),
     ) throws -> ModelExchangeSignedRequest {
-        var components = URLComponents()
-        components.scheme = flowdownScheme
-        components.host = "models"
-        components.path = "/exchange"
+        var components = makeRouteComponents()
         let caps = capabilities.map(\.rawValue).joined(separator: ",")
         components.queryItems = [
             .init(name: "session", value: session),
@@ -155,5 +156,13 @@ public nonisolated struct ModelExchangeRequestBuilder: Sendable {
         guard let finalURL = components.url else { throw URLError(.badURL) }
         let header = [ModelExchangeAPI.signatureHeader: signature]
         return .init(url: finalURL, headers: header)
+    }
+
+    private nonisolated func makeRouteComponents() -> URLComponents {
+        var components = URLComponents()
+        components.scheme = flowdownScheme
+        components.host = ModelExchangeURL.routeHost
+        components.path = ModelExchangeURL.routePath
+        return components
     }
 }

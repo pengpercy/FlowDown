@@ -130,14 +130,27 @@ final class SyncScopePage: StackScrollController {
 }
 
 extension SyncScopePage {
-    func addGroupToggle(icon: String, title: String.LocalizationValue, desc: String.LocalizationValue, group: SyncPreferences.Group) {
+    func addGroupToggle(
+        icon: String,
+        title: String.LocalizationValue,
+        desc: String.LocalizationValue,
+        group: SyncPreferences.Group
+    ) {
         let toggle = ConfigurableToggleActionView()
         toggle.configure(icon: UIImage(systemName: icon))
         toggle.configure(title: title)
         toggle.configure(description: desc)
         toggle.boolValue = SyncPreferences.isGroupEnabled(group)
         toggle.actionBlock = { value in
+            let wasEnabled = SyncPreferences.isGroupEnabled(group)
             SyncPreferences.setGroup(group, enabled: value)
+            // Changes fetched while the group was off were dropped and the change token moved past them,
+            // so fetch everything again. Stop first so the reload does not reuse the live engine's token.
+            guard value, !wasEnabled, SyncEngine.isSyncEnabled else { return }
+            Task {
+                try? await syncEngine.stopSyncIfNeeded()
+                try? await syncEngine.reloadDataForcefully()
+            }
         }
         stackView.addArrangedSubviewWithMargin(toggle)
         stackView.addArrangedSubview(SeparatorView())

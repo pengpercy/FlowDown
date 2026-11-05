@@ -14,6 +14,7 @@ XDG_CACHE_HOME := $(DERIVED_DATA)/xdg-cache
 MODULE_CACHE := $(DERIVED_DATA)/ModuleCache.noindex
 
 IOS_DESTINATION := generic/platform=iOS
+IOS_SIMULATOR_DESTINATION := generic/platform=iOS Simulator
 CATALYST_DESTINATION := generic/platform=macOS,variant=Mac Catalyst
 MACOS_DESTINATION := platform=macOS
 
@@ -53,9 +54,9 @@ define run-localization-script
 endef
 
 .PHONY: all help \
-	build build-ios build-catalyst build-extension \
-	test test-unit test-chat-client-kit test-online-e2e \
-	install-metal-toolchain package-resolve package-update package-verify scan-license release-macos-dmg \
+	build build-ios build-ios-simulator build-catalyst build-extension \
+	test test-unit test-chat-client-kit test-storage test-online-e2e \
+	install-metal-toolchain package-resolve package-update scan-license release-macos-dmg \
 	localization-check localization-stale-check \
 	archive archive-ios archive-macos \
 	chore clean clean-build
@@ -67,19 +68,20 @@ help:
 	@echo "  build                 Build the iOS and Mac Catalyst app"
 	@echo "  build-ios             Build the iOS app"
 	@echo "  build-catalyst        Build the Mac Catalyst app"
+	@echo "  build-ios-simulator   Build the iOS app for the simulator"
 	@echo "  build-extension       Build the translation provider extension"
 	@echo ""
 	@echo "Test:"
 	@echo "  test                  Run the default test flow"
 	@echo "  test-unit             Run app tests on the first available iOS simulator"
 	@echo "  test-chat-client-kit  Run ChatClientKit package tests on macOS"
+	@echo "  test-storage          Run Storage package tests on macOS"
 	@echo "  test-online-e2e       Run online e2e tests"
 	@echo ""
 	@echo "Packages & licenses:"
 	@echo "  install-metal-toolchain  Install the Xcode Metal toolchain"
 	@echo "  package-resolve       Resolve SwiftPM packages"
 	@echo "  package-update        Upgrade SwiftPM packages"
-	@echo "  package-verify        Check Package.resolved keeps the pins Xcode Cloud needs"
 	@echo "  scan-license          Refresh open source licenses"
 	@echo "  release-macos-dmg     Build one signed Mac Catalyst DMG (ARCH and VERSION required)"
 	@echo ""
@@ -107,6 +109,13 @@ build-ios:
 	$(BUILD_ENV) XCBUILD_LABEL=build-ios $(XCODEBUILD) \
 		-scheme $(IOS_SCHEME) \
 		-destination "$(IOS_DESTINATION)" \
+		build
+
+build-ios-simulator:
+	$(prepare-build-dirs)
+	$(BUILD_ENV) XCBUILD_LABEL=build-ios-simulator $(XCODEBUILD) \
+		-scheme $(IOS_SCHEME) \
+		-destination "$(IOS_SIMULATOR_DESTINATION)" \
 		build
 
 build-catalyst:
@@ -142,6 +151,17 @@ test-chat-client-kit:
 		$(CHAT_CLIENT_KIT_TEST_ARGUMENTS) \
 		test
 
+test-storage:
+	$(prepare-build-dirs)
+	cd Frameworks/Storage && $(BUILD_ENV) XCBUILD_LABEL=test-storage $(ROOT_DIR)/$(XCODEBUILD_WRAPPER) \
+		-scheme Storage \
+		-configuration $(CONFIGURATION) \
+		-derivedDataPath "$(DERIVED_DATA)/storage" \
+		-skipMacroValidation \
+		-skipPackagePluginValidation \
+		-destination "$(MACOS_DESTINATION)" \
+		test
+
 test-online-e2e: install-metal-toolchain package-resolve
 	./Resources/DevKit/scripts/run_online_e2e_tests.sh
 
@@ -172,9 +192,6 @@ package-resolve:
 package-update:
 	./Resources/DevKit/scripts/update-packages.sh
 
-package-verify:
-	./Resources/DevKit/scripts/required_package_pins.py check
-
 scan-license:
 	./Resources/DevKit/scripts/scan.license.sh
 
@@ -197,7 +214,6 @@ chore:
 	$(MAKE) localization-stale-check
 	$(MAKE) localization-check
 	$(MAKE) package-resolve
-	$(MAKE) package-verify
 	$(MAKE) scan-license dirty=1
 
 clean-build:

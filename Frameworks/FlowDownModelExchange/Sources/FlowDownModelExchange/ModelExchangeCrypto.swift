@@ -24,6 +24,8 @@ public nonisolated struct ModelExchangeEncryptedPayload: Codable, Equatable, Sen
 }
 
 public nonisolated enum ModelExchangeCrypto {
+    private nonisolated static let hkdfSalt = Data("flowdown-model-exchange".utf8)
+
     public nonisolated static func encrypt(
         _ data: Data,
         for peer: ModelExchangePublicKey,
@@ -32,7 +34,7 @@ public nonisolated enum ModelExchangeCrypto {
         guard let agreementKey = peer.agreementKey else { throw URLError(.cannotDecodeContentData) }
         let ephemeral = Curve25519.KeyAgreement.PrivateKey()
         let secret = try ephemeral.sharedSecretFromKeyAgreement(with: agreementKey)
-        let symmetric = deriveKey(secret: secret, session: session, peerSigning: peer.signing)
+        let symmetric = deriveKey(secret: secret, session: session, recipientSigning: peer.signing)
         let sealedBox = try ChaChaPoly.seal(data, using: symmetric)
         return .init(
             session: session,
@@ -54,17 +56,21 @@ public nonisolated enum ModelExchangeCrypto {
         }
 
         let secret = try keyPair.agreement.sharedSecretFromKeyAgreement(with: peerPublicKey)
-        let symmetric = deriveKey(secret: secret, session: payload.session, peerSigning: keyPair.publicKey.signing)
+        let symmetric = deriveKey(secret: secret, session: payload.session, recipientSigning: keyPair.publicKey.signing)
         return try ChaChaPoly.open(sealedBox, using: symmetric)
     }
 
-    private nonisolated static func deriveKey(secret: SharedSecret, session: String, peerSigning: Data) -> SymmetricKey {
-        var salt = ModelExchangeAPI.hkdfSalt
+    private nonisolated static func deriveKey(
+        secret: SharedSecret,
+        session: String,
+        recipientSigning: Data
+    ) -> SymmetricKey {
+        var salt = hkdfSalt
         salt.append(Data(session.utf8))
         return secret.hkdfDerivedSymmetricKey(
             using: SHA256.self,
             salt: salt,
-            sharedInfo: peerSigning,
+            sharedInfo: recipientSigning,
             outputByteCount: 32,
         )
     }

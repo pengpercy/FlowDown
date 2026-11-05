@@ -13,7 +13,7 @@ import Storage
 import UIKit
 
 final class MessageListView: UIView {
-    let listView: ListViewKit.ListView<Entry> = .init()
+    let listView = RetainingListView()
 
     var contentSize: CGSize {
         listView.contentSize
@@ -35,14 +35,18 @@ final class MessageListView: UIView {
             alpha = 0
             sessionScopedCancellables.forEach { $0.cancel() }
             sessionScopedCancellables.removeAll()
-            Publishers.CombineLatest(
+            let sessionID = session.id
+            Publishers.CombineLatest3(
                 session.messagesDidChange,
                 session.activityText.removeDuplicates(),
+                ConversationSessionManager.shared.executingSessionsPublisher
+                    .map { $0.contains(sessionID) }
+                    .removeDuplicates(),
             )
             .receive(on: updateQueue)
-            .sink { [weak self] v1, v2 in
+            .sink { [weak self] v1, v2, isExecuting in
                 guard let self else { return }
-                updateFromUpstreamPublisher(v1.0, v1.1, isLoading: v2)
+                updateFromUpstreamPublisher(v1.0, v1.1, isLoading: v2, isExecuting: isExecuting)
             }
             .store(in: &sessionScopedCancellables)
             session.userDidSendMessage.sink { [unowned self] _ in
@@ -72,8 +76,24 @@ final class MessageListView: UIView {
         }
     }
 
-    static let listRowInsets: UIEdgeInsets = .init(top: 0, left: 45, bottom: 16, right: 45)
-    var theme: MarkdownTheme = .default {
+    /// The least space beside a row's content.
+    static let rowHorizontalPadding: CGFloat = 20
+    /// The widest a row's content gets: the editor's card at its widest
+    /// (750 pt less its 10 pt gap each side), so text lines up with it.
+    static let rowReadableWidth: CGFloat = 730
+    /// Between one row's content and the next.
+    static let rowSpacing: CGFloat = 16
+
+    /// A row's insets at `width`: the padding, or more to centre the content
+    /// in the readable width, and the spacing below it.
+    static func listRowInsets(for width: CGFloat) -> UIEdgeInsets {
+        let side = max(rowHorizontalPadding, ((width - rowReadableWidth) / 2).rounded(.down))
+        return .init(top: 0, left: side, bottom: rowSpacing, right: side)
+    }
+
+    /// The reply's theme: the reader's font size with the chat's spacing and
+    /// colours (`ChatMarkdownView.chatTheme(from:)`).
+    var theme: MarkdownTheme = ChatMarkdownView.chatTheme(from: .default) {
         didSet {
             guard oldValue != theme else { return }
             // Every pooled sizing view was built for the old theme and would
@@ -83,9 +103,11 @@ final class MessageListView: UIView {
         }
     }
 
-    private(set) lazy var labelForSizeCalculation: TextLabelView = .init()
+    /// The trace sheet open from a summary in this list, which follows it.
+    weak var openTrace: TraceController?
     private(set) lazy var markdownSizingViewPool: MarkdownSizingViewPool = .init()
     private(set) lazy var markdownPackageCache: MarkdownPackageCache = .init()
+    /// The fenced code blocks the reader unfolded, per message.
     var expandedCodeBlocks: [Message.ID: Set<Int>] = [:]
 
     #if DEBUG
@@ -117,6 +139,12 @@ final class MessageListView: UIView {
 
         listView.delegate = self
         registerRows()
+        // Only AI rows are worth laying out ahead of a scroll: typesetting a
+        // Markdown document at a new width is what stalls one.
+        listView.preparedRowHeight = { [weak self] entry, listWidth in
+            guard let self, case let .aiContent(_, message) = entry else { return nil }
+            return aiRowHeight(for: message, inListWidth: listWidth)
+        }
         listView.alwaysBounceVertical = true
         listView.alwaysBounceHorizontal = false
         listView.contentInsetAdjustmentBehavior = .never
@@ -144,7 +172,7 @@ final class MessageListView: UIView {
             .ensureMainThread()
             .sink { [weak self] _ in
                 guard let self else { return }
-                theme = MarkdownTheme.default
+                theme = ChatMarkdownView.chatTheme(from: .default)
                 listView.reloadData()
                 updateList()
             }
@@ -249,7 +277,7 @@ final class MessageListView: UIView {
         // matches the catalog, so it must be localized here first.
         let alert = AlertViewController(
             title: "Open Link",
-            message: String(localized: "Do you want to open this link in your default browser?\n\n\(link.absoluteString)"),
+            message: "Do you want to open this link in your default browser?\n\n\(link.absoluteString)",
         ) { context in
             context.allowSimpleDispose()
             context.addAction(title: "Cancel") {
@@ -265,16 +293,22 @@ final class MessageListView: UIView {
     }
 
     func updateList(animated: Bool = false) {
-        listView.apply(entries(from: session.messages), animated: animated)
+        let isExecuting = ConversationSessionManager.shared.isSessionExecuting(session.id)
+        listView.apply(entries(from: session.messages, isExecuting: isExecuting), animated: animated)
     }
 
-    func updateFromUpstreamPublisher(_ messages: [Message], _ scrolling: Bool, isLoading: String?) {
+    func updateFromUpstreamPublisher(
+        _ messages: [Message],
+        _ scrolling: Bool,
+        isLoading: String?,
+        isExecuting: Bool,
+    ) {
         assert(!Thread.isMainThread)
         #if DEBUG
             // TEMP scroll-diag: remove after #2.
             Logger.ui.infoFile("[scroll-diag] upstream scrolling=\(scrolling) auto=\(isAutoScrollingToBottom) loading=\(isLoading ?? "nil")")
         #endif
-        var entries = entries(from: messages)
+        var entries = entries(from: messages, isExecuting: isExecuting)
 
         for entry in entries {
             switch entry {
@@ -284,7 +318,10 @@ final class MessageListView: UIView {
             }
         }
 
-        if let isLoading { entries.append(.activityReporting(isLoading)) }
+        // A running summary already says the turn is at work; the status line
+        // stands in only where there is none.
+        let endsInRunningSummary = if case let .activity(summary)? = entries.last { summary.isRunning } else { false }
+        if let isLoading, !endsInRunningSummary { entries.append(.activityReporting(isLoading)) }
 
         let shouldScrolling = scrolling && isAutoScrollingToBottom
 
@@ -302,16 +339,8 @@ final class MessageListView: UIView {
                     }
                 }
             } else {
-                // Animate structural changes (rows appearing or going away),
-                // but apply content-only updates outright: streaming rewrites
-                // the same rows many times a second, and every pass through
-                // the list animation re-springs each row's frame, which reads
-                // as a flicker in anything laid out inside the row — fenced
-                // code blocks most of all.
-                let current = listView.content
-                let structureChanged = entries.count != current.count
-                    || !zip(entries, current).allSatisfy { $0.id == $1.id }
-                listView.apply(entries, animated: structureChanged)
+                listView.apply(entries, animated: true)
+                updateOpenTrace()
                 #if DEBUG
                     // TEMP scroll-diag: remove after #2.
                     Logger.ui.infoFile("[scroll-diag] apply shouldScroll=\(shouldScrolling) offset=\(Int(listView.contentOffset.y)) max=\(Int(listView.maximumContentOffset.y))")

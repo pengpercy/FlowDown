@@ -14,7 +14,8 @@ extension ConversationSession {
         _ requestMessages: inout [ChatRequestBody.Message],
         _ modelCapabilities: Set<ModelCapabilities>,
     ) async {
-        for message in messages {
+        let stored = messages
+        for (index, message) in stored.enumerated() {
             switch message.role {
             case .system:
                 guard !message.document.isEmpty else { continue }
@@ -51,6 +52,18 @@ extension ConversationSession {
                 // Reasoning rides along for preserved-thinking models; the
                 // encoder drops it unless the model opted in.
                 let reasoning = message.reasoningContent.trimmingCharacters(in: .whitespacesAndNewlines)
+                if documentIsPlaceholder(message),
+                   stored.indices.contains(index + 1),
+                   replaysStoredToolCall(stored[index + 1])
+                {
+                    // The tool call replayed next carries this turn; send the
+                    // reasoning without the UI placeholder text. Without that
+                    // row (deleted, or cancelled before it was made) the text
+                    // stays, so the turn never goes out empty.
+                    guard !reasoning.isEmpty else { continue }
+                    requestMessages.append(.assistant(content: nil, reasoning: reasoning))
+                    continue
+                }
                 requestMessages.append(.assistant(
                     content: .text(message.document),
                     reasoning: reasoning.isEmpty ? nil : reasoning,
@@ -70,14 +83,14 @@ extension ConversationSession {
                     from: message,
                     output: searchResults.joined(separator: "\n"),
                     emptyOutput: String(localized: "Search completed with no results"),
-                ) else { return }
+                ) else { continue }
                 requestMessages.append(contentsOf: replay)
             case .toolHint:
                 guard let replay = await replayStoredToolCall(
                     from: message,
                     output: message.toolStatus.message,
                     emptyOutput: String(localized: "Tool executed successfully with no output"),
-                ) else { return }
+                ) else { continue }
                 requestMessages.append(contentsOf: replay)
             default:
                 continue
@@ -101,7 +114,8 @@ extension ConversationSession {
     /// Replays a stored tool call as the provider expects to see it: the
     /// assistant turn that requested the call, followed by the tool turn that
     /// carries its output. Returns nil when the stored request cannot be
-    /// decoded, which aborts the whole rebuild.
+    /// decoded, such as rows from the retired pre-action web search; the row
+    /// is then skipped so the turns after it still reach the model.
     private func replayStoredToolCall(
         from message: Message,
         output: String,
@@ -122,9 +136,7 @@ extension ConversationSession {
     }
 
     func encodeAdditionalInfoAndAttachToMessage(_ message: Message, dic: [String: Any]) {
-        let read = message.metadata ?? .init()
-        let orig = try? JSONSerialization.jsonObject(with: read, options: [.fragmentsAllowed]) as? [String: Any]
-        var existing = orig ?? .init()
+        var existing = metadataDictionary(of: message) ?? [:]
         for (key, value) in dic {
             existing[key] = value
         }
@@ -135,19 +147,62 @@ extension ConversationSession {
 
     func encodeToolRequestAndAttachToToolMessage(_ toolRequest: ToolRequest, message: Message) {
         let precoded = try? JSONEncoder().encode(toolRequest)
-        let predic = try? JSONSerialization.jsonObject(with: precoded ?? .init(), options: [.fragmentsAllowed]) as? [String: Any]
+        let predic = try? JSONSerialization.jsonObject(
+            with: precoded ?? .init(),
+            options: [.fragmentsAllowed]
+        ) as? [String: Any]
         encodeAdditionalInfoAndAttachToMessage(message, dic: ["tool_request": predic ?? [:]])
-        logger.debugFile("[*] encoded tool request \(toolRequest.name) to message \(message.objectId) with value \(predic ?? [:])")
+        logger.debugFile(
+            "[*] encoded tool request \(toolRequest.name) to message \(message.objectId) with value \(predic ?? [:])"
+        )
+    }
+
+    /// Marks the message's document as a UI placeholder rather than model
+    /// output. Storing the text itself lets a later edit clear the mark.
+    func markDocumentAsPlaceholder(_ message: Message) {
+        encodeAdditionalInfoAndAttachToMessage(message, dic: ["placeholder_document": message.document])
+    }
+
+    func documentIsPlaceholder(_ message: Message) -> Bool {
+        guard let placeholder = metadataDictionary(of: message)?["placeholder_document"] as? String else {
+            return false
+        }
+        return placeholder == message.document
+    }
+
+    /// Marks a user row the pipeline added to carry generated or tool-provided
+    /// attachments. It is not a prompt the user wrote, so retry skips it.
+    func markAsAttachmentHolder(_ message: Message) {
+        encodeAdditionalInfoAndAttachToMessage(message, dic: ["attachment_holder": true])
+    }
+
+    func isAttachmentHolder(_ message: Message) -> Bool {
+        metadataDictionary(of: message)?["attachment_holder"] as? Bool ?? false
+    }
+
+    /// Whether the row replays as an assistant tool-call turn, which then
+    /// merges with the assistant turn right before it.
+    private func replaysStoredToolCall(_ message: Message) -> Bool {
+        switch message.role {
+        case .toolHint, .webSearch:
+            decodeToolRequestFromToolMessage(message) != nil
+        default:
+            false
+        }
     }
 
     func decodeToolRequestFromToolMessage(_ message: Message) -> ToolRequest? {
-        let read = message.metadata ?? .init()
-        guard let orig = try? JSONSerialization.jsonObject(with: read, options: [.fragmentsAllowed]) as? [String: Any],
-              let toolRequestDic = orig["tool_request"],
+        guard let toolRequestDic = metadataDictionary(of: message)?["tool_request"],
               let data = try? JSONSerialization.data(withJSONObject: toolRequestDic, options: [.fragmentsAllowed]),
               let toolRequest = try? JSONDecoder().decode(ToolRequest.self, from: data)
         else { return nil }
         return toolRequest
+    }
+
+    /// The message metadata as a JSON object, or nil when it is missing or not a dictionary.
+    private func metadataDictionary(of message: Message) -> [String: Any]? {
+        guard let metadata = message.metadata else { return nil }
+        return try? JSONSerialization.jsonObject(with: metadata, options: [.fragmentsAllowed]) as? [String: Any]
     }
 
     func normalizeStoredToolRequest(_ request: ToolRequest) async -> ToolRequest {
@@ -186,7 +241,9 @@ extension ConversationSession {
     ) async -> ChatRequestBody.Message? {
         switch attachment.type {
         case .text:
-            return .user(content: .text(["[\(attachment.name)]", attachment.textRepresentation].joined(separator: "\n")))
+            return .user(
+                content: .text(["[\(attachment.name)]", attachment.textRepresentation].joined(separator: "\n"))
+            )
         case .image:
             if supportsVision {
                 guard let image = UIImage(data: attachment.imageRepresentation),
@@ -211,14 +268,20 @@ extension ConversationSession {
                     logger.infoFile("[-] image attachment ignored because not processed")
                     return nil
                 }
-                return .user(content: .text(["[\(attachment.name)]", attachment.textRepresentation].joined(separator: "\n")))
+                return .user(
+                    content: .text(["[\(attachment.name)]", attachment.textRepresentation].joined(separator: "\n"))
+                )
             }
         case .audio:
             if supportsAudio {
                 let data = attachment.imageRepresentation
                 // treat this data as m4a, process to transcoding what's so ever
                 do {
-                    let content = try await AudioTranscoder.transcode(data: data, fileExtension: "m4a", output: .compressedQualityWAV)
+                    let content = try await AudioTranscoder.transcode(
+                        data: data,
+                        fileExtension: "m4a",
+                        output: .compressedQualityWAV
+                    )
                     let base64 = content.data.base64EncodedString()
                     var parts: [ChatRequestBody.Message.ContentPart] = [
                         .audioBase64(base64, format: "wav"),
@@ -232,7 +295,11 @@ extension ConversationSession {
                     return .user(content: .parts(parts))
                 } catch {
                     logger.errorFile("[-] audio attachment transcoding failed: \(error.localizedDescription)")
-                    return .user(content: .text("Audio attachment \"\(attachment.name)\" was skipped because transcoding failed."))
+                    return .user(
+                        content: .text(
+                            "Audio attachment \"\(attachment.name)\" was skipped because transcoding failed."
+                        )
+                    )
                 }
             } else {
                 let description = attachment.textRepresentation.trimmingCharacters(in: .whitespacesAndNewlines)

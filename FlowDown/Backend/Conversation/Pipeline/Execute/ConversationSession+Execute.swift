@@ -82,8 +82,6 @@ extension ConversationSession {
     ) async {
         var object = inputObject
 
-        // MARK: - 推理前准备
-
         let modelName = ModelManager.shared.modelName(identifier: modelID)
         let modelCapabilities = ModelManager.shared.modelCapabilities(identifier: modelID)
         let modelContextLength = ModelManager.shared.modelContextLength(identifier: modelID)
@@ -99,8 +97,7 @@ extension ConversationSession {
         await MainActor.run { UIApplication.shared.isIdleTimerDisabled = true }
         save()
 
-        // MARK: - 上下文转译到请求体 不包含当前编辑框中的附件
-
+        // Build the request from history; attachments still in the editor are added later.
         var requestMessages: [ChatRequestBody.Message] = []
         await buildInitialRequestMessages(&requestMessages, modelCapabilities)
 
@@ -118,6 +115,7 @@ extension ConversationSession {
             save()
         } catch {
             logger.errorFile("\(error.localizedDescription)")
+            finalizeInterruptedReasoning()
             let sanitized = error.localizedDescription
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             if error is InferenceUserCancellationError {
@@ -142,6 +140,19 @@ extension ConversationSession {
         endActivity()
     }
 
+    /// Gives each assistant message cut off mid-reasoning the placeholder the
+    /// completed round writes. The reasoning tile reads an empty document as
+    /// still thinking, so a failed or cancelled stream would otherwise leave
+    /// it animating.
+    func finalizeInterruptedReasoning() {
+        for message in messages where message.role == .assistant {
+            let reasoning = message.reasoningContent.trimmingCharacters(in: .whitespacesAndNewlines)
+            let document = message.document.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !reasoning.isEmpty, document.isEmpty else { continue }
+            message.update(\.document, to: String(localized: "Thinking finished without output any content."))
+        }
+    }
+
     func requestLinkContentIndex(_ url: URL) -> Int {
         assert(!Thread.isMainThread)
         let index = linkedContents.count + 1
@@ -163,8 +174,6 @@ extension ConversationSession {
         try checkCancellation()
         showActivity()
 
-        // MARK: - 添加用户的消息到储存框架
-
         let document = object.text
         let userMessage = appendNewMessage(role: .user)
         userMessage.update(\.document, to: document)
@@ -172,12 +181,8 @@ extension ConversationSession {
         addAttachments(object.attachments, to: userMessage)
         await requestUpdate()
 
-        // MARK: - 添加 Attachment 数据到持久化内容
-
         updateAttachments(object.attachments, for: userMessage)
         save()
-
-        // MARK: - 预处理图片信息提取
 
         try checkCancellation()
         try await preprocessAttachments(
@@ -188,8 +193,6 @@ extension ConversationSession {
         )
         save()
 
-        // MARK: - 添加这次的附件
-
         if !object.attachments.isEmpty {
             showActivity(String(localized: "Processing Attachments"))
             let attachmentMessages = await makeMessageFromAttachments(
@@ -199,8 +202,6 @@ extension ConversationSession {
             requestMessages.append(contentsOf: attachmentMessages)
             save()
         }
-
-        // MARK: - 构建工具调用列表
 
         let servers = MCPService.shared.servers.value
         let shouldPrepareMCP = servers.filter(\.isEnabled).count > 0
@@ -221,8 +222,6 @@ extension ConversationSession {
         let toolsDefinitions = tools.isEmpty ? nil : tools.map(\.definition)
         let webSearchEnabled = tools.contains { $0 is MTWebSearchTool }
 
-        // MARK: - 添加最新的系统提示
-
         await injectNewSystemCommand(
             &requestMessages,
             modelName,
@@ -230,8 +229,6 @@ extension ConversationSession {
             webSearchEnabled,
             object,
         )
-
-        // MARK: - 删除超出上下文长度限制的消息
 
         try checkCancellation()
         if try removeOutOfContextContents(
@@ -241,23 +238,28 @@ extension ConversationSession {
             preservesReasoning: modelCapabilities.contains(.preservedThinking),
         ) {
             let hintMessage = appendNewMessage(role: .hint)
-            hintMessage.update(\.document, to: String(localized: "Some messages have been removed to fit the model context length."))
+            hintMessage.update(
+                \.document,
+                to: String(localized: "Some messages have been removed to fit the model context length.")
+            )
             await requestUpdate()
         }
-
-        // MARK: - 开始循环调用接口
 
         try checkCancellation()
         save()
 
         var shouldContinue = false
         repeat {
+            // A round returns true exactly when it executed tools, so the next
+            // one is their follow-up even if attachments now end the request.
+            let isFollowUpAfterToolCall = shouldContinue
             shouldContinue = try await doMainInferenceOnce(
                 currentMessageListView,
                 modelID,
                 &requestMessages,
                 toolsDefinitions,
                 modelWillExecuteTools,
+                isFollowUpAfterToolCall,
             )
             save()
         } while shouldContinue
@@ -265,8 +267,6 @@ extension ConversationSession {
         await requestUpdate()
 
         Logger.app.infoFile("inference done")
-
-        // MARK: - 自动记忆提取和对话摘要
 
         let shouldExtractMemory = modelWillExecuteTools && ModelToolsManager.shared.canStoreMemory
         let recentMessages = Array(messages.suffix(6))
@@ -289,8 +289,6 @@ extension ConversationSession {
                 )
             }
         }
-
-        // MARK: - 生成标题和图标
 
         try checkCancellation()
         if shouldAutoRename {
