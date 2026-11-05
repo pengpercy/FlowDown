@@ -13,10 +13,11 @@ extension ConversationSelectionView {
     /// One row of the sidebar: a folder, a conversation, or the placeholder
     /// shown inside an expanded empty folder.
     ///
-    /// Selection, context menus and drag & drop are all driven by the table
-    /// view delegates, so the cell installs no gesture recognizers of its own
-    /// besides hover tracking; a cell-level tap recognizer would race the
-    /// table's own selection and drag recognizers.
+    /// Context menus, drag & drop and folder toggling are driven by the table
+    /// view delegates. Opening a conversation needs the cell's own tap
+    /// recognizer: on Catalyst a click on a conversation row does not reach
+    /// `tableView(_:didSelectRowAt:)` (only keyboard focus does), so the
+    /// recognizer selects it directly and stays out of folder rows.
     class Cell: UITableViewCell {
         enum Metrics {
             static let rowHeight: CGFloat = 34
@@ -130,6 +131,15 @@ extension ConversationSelectionView {
             countLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
 
             addGestureRecognizer(UIHoverGestureRecognizer(target: self, action: #selector(hoverChanged(_:))))
+
+            contentView.isUserInteractionEnabled = true
+            let tap = UITapGestureRecognizer(target: self, action: #selector(conversationTapped))
+            contentView.addGestureRecognizer(tap)
+            #if targetEnvironment(macCatalyst)
+                // A fully transparent content view lets clicks fall through
+                // on Catalyst; a near-invisible fill keeps it hit-testable.
+                contentView.backgroundColor = .accent.withAlphaComponent(0.001)
+            #endif
         }
 
         @available(*, unavailable)
@@ -152,11 +162,34 @@ extension ConversationSelectionView {
             updateBackground()
         }
 
+        /// Keyboard focus is drawn by `hoverBackgroundView`; the system halo
+        /// renders on Catalyst as a thick square ring around the row.
+        override var focusEffect: UIFocusEffect? {
+            get { nil }
+            set { _ = newValue }
+        }
+
         override func didUpdateFocus(in context: UIFocusUpdateContext, with coordinator: UIFocusAnimationCoordinator) {
             super.didUpdateFocus(in: context, with: coordinator)
             coordinator.addCoordinatedAnimations { [weak self] in
                 self?.updateBackground()
             }
+        }
+
+        @objc private func conversationTapped() {
+            guard case let .conversation(identifier) = item else { return }
+            Logger.ui.debugFile("ConversationSelectionView cell tapped: \(identifier)")
+            ChatSelection.shared.select(identifier, options: [.collapseSidebar])
+        }
+
+        override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            // Folder and placeholder rows must not be intercepted: the click
+            // has to reach the table view so the delegate can toggle folders.
+            guard gestureRecognizer is UITapGestureRecognizer else {
+                return super.gestureRecognizerShouldBegin(gestureRecognizer)
+            }
+            if case .conversation = item { return true }
+            return false
         }
 
         @objc private func hoverChanged(_ recognizer: UIHoverGestureRecognizer) {
