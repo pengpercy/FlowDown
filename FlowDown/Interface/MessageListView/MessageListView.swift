@@ -78,9 +78,11 @@ final class MessageListView: UIView {
 
     /// The least space beside a row's content.
     static let rowHorizontalPadding: CGFloat = 20
-    /// The widest a row's content gets: the editor's card at its widest
-    /// (750 pt less its 10 pt gap each side), so text lines up with it.
-    static let rowReadableWidth: CGFloat = 730
+    /// The widest a row's content gets, from the Chat Width setting; the
+    /// editor card follows the same setting so text lines up with it.
+    static var rowReadableWidth: CGFloat {
+        ChatLayoutWidth.current.readableWidth
+    }
     /// Between one row's content and the next.
     static let rowSpacing: CGFloat = 16
 
@@ -175,6 +177,17 @@ final class MessageListView: UIView {
                 theme = ChatMarkdownView.chatTheme(from: .default)
                 listView.reloadData()
                 updateList()
+            }
+            .store(in: &viewCancellables)
+        ChatLayoutWidth.didChange
+            .ensureMainThread()
+            .sink { [weak self] _ in
+                guard let self else { return }
+                // Row heights were measured against the old column width.
+                markdownSizingViewPool.removeAll()
+                listView.reloadData()
+                updateList()
+                setNeedsLayout()
             }
             .store(in: &viewCancellables)
         CodeBlockCollapseSetting.collapsibilityDidChange

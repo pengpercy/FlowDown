@@ -110,6 +110,9 @@ extension SettingController.SettingContent {
             stackView.addArrangedSubviewWithMargin(MarkdownTheme.configurableObject.createView())
             stackView.addArrangedSubview(SeparatorView())
 
+            stackView.addArrangedSubviewWithMargin(ChatLayoutWidth.configurableObject.createView())
+            stackView.addArrangedSubview(SeparatorView())
+
             stackView.addArrangedSubviewWithMargin(CodeBlockCollapseSetting.configurableObject.createView())
             stackView.addArrangedSubview(SeparatorView())
 

@@ -152,6 +152,13 @@ extension ConversationSelectionView {
             updateBackground()
         }
 
+        /// Keyboard focus is drawn by `hoverBackgroundView`; the system halo
+        /// renders on Catalyst as a thick square ring around the row.
+        override var focusEffect: UIFocusEffect? {
+            get { nil }
+            set { _ = newValue }
+        }
+
         override func didUpdateFocus(in context: UIFocusUpdateContext, with coordinator: UIFocusAnimationCoordinator) {
             super.didUpdateFocus(in: context, with: coordinator)
             coordinator.addCoordinatedAnimations { [weak self] in

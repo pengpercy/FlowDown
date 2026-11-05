@@ -762,6 +762,46 @@ NEW_STRINGS: dict[str, dict[str, str]] = {
         "ko": "선택 해제된 모델 %lld개가 FlowDown에서 제거됩니다.",
         "zh-Hans": "%lld 个未勾选的模型将从 FlowDown 中移除。",
     },
+    "Chat Width": {
+        "de": "Chatbreite",
+        "es": "Ancho del chat",
+        "fr": "Largeur du chat",
+        "ja": "チャットの幅",
+        "ko": "채팅 너비",
+        "zh-Hans": "对话宽度",
+    },
+    "Set how wide messages and the input box may grow in large windows.": {
+        "de": "Legt fest, wie breit Nachrichten und das Eingabefeld in großen Fenstern werden dürfen.",
+        "es": "Define cuánto pueden ensancharse los mensajes y el cuadro de entrada en ventanas grandes.",
+        "fr": "Définit la largeur maximale des messages et de la zone de saisie dans les grandes fenêtres.",
+        "ja": "大きなウインドウでメッセージと入力欄をどこまで広げるかを設定します。",
+        "ko": "큰 창에서 메시지와 입력란이 넓어질 수 있는 정도를 설정합니다.",
+        "zh-Hans": "设置在大窗口中消息与输入框最多能有多宽。",
+    },
+    "Narrow": {
+        "de": "Schmal",
+        "es": "Estrecho",
+        "fr": "Étroit",
+        "ja": "狭い",
+        "ko": "좁게",
+        "zh-Hans": "窄",
+    },
+    "Wide": {
+        "de": "Breit",
+        "es": "Ancho",
+        "fr": "Large",
+        "ja": "広い",
+        "ko": "넓게",
+        "zh-Hans": "宽",
+    },
+    "Full Width": {
+        "de": "Volle Breite",
+        "es": "Ancho completo",
+        "fr": "Pleine largeur",
+        "ja": "全幅",
+        "ko": "전체 너비",
+        "zh-Hans": "铺满",
+    },
 }
 
 if __name__ == "__main__":

@@ -44,6 +44,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         EditorBehavior.subscribeToConfigurableItem()
         MarkdownTheme.subscribeToConfigurableItem()
         CodeBlockCollapseSetting.subscribeToConfigurableItem()
+        ChatLayoutWidth.subscribeToConfigurableItem()
         ScrubberConfiguration.subscribeToConfigurableItem()
         ScrubberConfiguration.setup() // build access control rule
 

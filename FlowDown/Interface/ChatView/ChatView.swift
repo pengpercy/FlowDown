@@ -15,6 +15,8 @@ import UIKit
 class ChatView: UIView {
     var conversationIdentifier: Conversation.ID?
     var cancellables: Set<AnyCancellable> = .init()
+    /// Caps the editor card at the Chat Width setting.
+    private var editorMaxWidthConstraint: Constraint?
 
     let handlerColor: UIColor = .init {
         switch $0.userInterfaceStyle {
@@ -93,7 +95,7 @@ class ChatView: UIView {
             #if targetEnvironment(macCatalyst)
                 make.bottom.equalToSuperview()
                 make.centerX.equalToSuperview()
-                make.width.lessThanOrEqualTo(750)
+                editorMaxWidthConstraint = make.width.lessThanOrEqualTo(ChatLayoutWidth.current.editorWidth).constraint
                 make.width.lessThanOrEqualToSuperview()
                 make.width.equalToSuperview().priority(.low)
             #else
@@ -101,7 +103,7 @@ class ChatView: UIView {
                 // clock and the camera in a column along one side.
                 make.bottom.equalTo(safeAreaLayoutGuide)
                 make.centerX.equalTo(safeAreaLayoutGuide)
-                make.width.lessThanOrEqualTo(750)
+                editorMaxWidthConstraint = make.width.lessThanOrEqualTo(ChatLayoutWidth.current.editorWidth).constraint
                 make.width.lessThanOrEqualTo(safeAreaLayoutGuide)
                 make.width.equalTo(safeAreaLayoutGuide).priority(.low)
             #endif
@@ -147,6 +149,14 @@ class ChatView: UIView {
         title.onSuggestSelection = { [weak self] id in
             self?.onSuggestNewChat?(id)
         }
+
+        ChatLayoutWidth.didChange
+            .ensureMainThread()
+            .sink { [weak self] value in
+                self?.editorMaxWidthConstraint?.update(offset: value.editorWidth)
+                self?.setNeedsLayout()
+            }
+            .store(in: &cancellables)
 
         editor.heightPublisher
             .ensureMainThread()

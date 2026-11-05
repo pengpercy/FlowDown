@@ -10,18 +10,15 @@ import Foundation
 import Storage
 import UIKit
 
-private let dateFormatter = DateFormatter().with {
-    $0.locale = .current
-    $0.dateStyle = .short
-    $0.timeStyle = .short
-}
-
 extension ConversationManager {
     /// Builds the conversation context menu.
     ///
-    /// Frequent actions live at the top level and are grouped into inline
-    /// sections; the only submenus are one level deep (Move to Folder, Save
-    /// Image, Export) so nothing requires hovering through nested menus.
+    /// Actions sit at the top level, separated into inline sections: edit,
+    /// organize, model actions, export, delete. The only submenus are one
+    /// level deep (Move to Folder, Save Image, Export).
+    ///
+    /// The root menu must not be `.displayInline`: Catalyst renders inline
+    /// sections nested inside an inline root as untitled submenus.
     func menu(
         forConversation identifier: Conversation.ID?,
         view: UIView,
@@ -48,8 +45,16 @@ extension ConversationManager {
             ]))
         }
 
+        let deleteIconAction: UIAction? = conv.icon.isEmpty ? nil : UIAction(
+            title: String(localized: "Delete Icon"),
+            image: UIImage(systemName: "xmark.circle"),
+        ) { _ in
+            ConversationManager.shared.editConversation(identifier: conv.id) {
+                $0.update(\.icon, to: .init())
+            }
+        }
+
         sections.append(UIMenu(
-            title: dateFormatter.string(from: conv.creation),
             options: [.displayInline],
             children: [
                 UIAction(
@@ -83,6 +88,13 @@ extension ConversationManager {
                     }
                     controller.present(picker, animated: true)
                 },
+                deleteIconAction,
+            ].compactMap(\.self),
+        ))
+
+        sections.append(UIMenu(
+            options: [.displayInline],
+            children: [
                 UIAction(
                     title: conv.isFavorite
                         ? String(localized: "Unfavorite")
@@ -283,18 +295,6 @@ extension ConversationManager {
         }
 
         sections.append(UIMenu(options: [.displayInline], children: [
-            { () -> UIAction? in
-                guard !conv.icon.isEmpty else { return nil }
-                return UIAction(
-                    title: String(localized: "Delete Icon"),
-                    image: UIImage(systemName: "xmark.circle"),
-                    attributes: .destructive,
-                ) { _ in
-                    ConversationManager.shared.editConversation(identifier: conv.id) {
-                        $0.update(\.icon, to: .init())
-                    }
-                }
-            }(),
             UIAction(
                 title: String(localized: "Delete"),
                 image: UIImage(systemName: "trash"),
@@ -305,9 +305,9 @@ extension ConversationManager {
                     ChatSelection.shared.select(first)
                 }
             },
-        ].compactMap(\.self)))
+        ]))
 
-        return UIMenu(options: [.displayInline], children: sections)
+        return UIMenu(children: sections)
     }
 
     /// A single-level submenu listing every folder (the current one checked),
@@ -493,7 +493,7 @@ extension ConversationManager {
             .filter { $0.value == folder.id }
             .map(\.key)
 
-        return UIMenu(options: [.displayInline], children: [
+        return UIMenu(children: [
             UIMenu(options: [.displayInline], children: [
                 UIAction(
                     title: String(localized: "New Conversation"),
