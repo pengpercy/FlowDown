@@ -17,6 +17,10 @@ extension SettingController.SettingContent.ModelController: UITableViewDelegate 
             return
         }
         switch itemIdentifier.type {
+        case .provider:
+            let provider = ModelManager.shared.cloudProviders.first { $0.id == itemIdentifier.identifier }
+            guard let provider else { return }
+            CloudProviderEditorController.present(from: self, provider: provider)
         case .local:
             let controller = LocalModelEditorController(identifier: itemIdentifier.identifier)
             navigationController?.pushViewController(controller, animated: true)
@@ -36,8 +40,13 @@ extension SettingController.SettingContent.ModelController: UITableViewDelegate 
         let delete = UIContextualAction(
             style: .destructive,
             title: String(localized: "Delete"),
-        ) { _, _, completion in
+        ) { [weak self] _, _, completion in
             switch itemIdentifier.type {
+            case .provider:
+                // Deletion waits for confirmation; the row stays until the models are removed.
+                self?.confirmDeleteProvider(identifier: itemIdentifier.identifier)
+                completion(false)
+                return
             case .local:
                 ModelManager.shared.removeLocalModel(identifier: itemIdentifier.identifier)
             case .cloud:

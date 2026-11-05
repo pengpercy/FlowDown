@@ -13,8 +13,26 @@ import UIKit
 import UniformTypeIdentifiers
 
 extension SettingController.SettingContent.ModelController {
+    private func makeAddProviderAction(_ preset: CloudProviderPreset?) -> UIAction {
+        UIAction(
+            title: preset?.name ?? String(localized: "Custom Provider"),
+            image: UIImage(systemName: preset?.icon ?? "slider.horizontal.3"),
+        ) { [weak self] _ in
+            guard let self else { return }
+            CloudProviderEditorController.present(from: self, provider: nil, preset: preset)
+        }
+    }
+
     private func createCloudModelMenuItems() -> [UIMenuElement] {
         [
+            UIMenu(
+                title: String(localized: "Add Provider"),
+                image: UIImage(systemName: "server.rack"),
+                children: [
+                    UIMenu(options: .displayInline, children: CloudProviderPreset.cloud.map { makeAddProviderAction($0) }),
+                    UIMenu(options: .displayInline, children: [makeAddProviderAction(nil)]),
+                ],
+            ),
             UIAction(
                 title: String(localized: "Empty Model"),
                 image: .init(systemName: "square.dashed"),
@@ -54,19 +72,15 @@ extension SettingController.SettingContent.ModelController {
                 title: String(localized: "Connect @ OLLAMA"),
                 image: .init(systemName: "cable.connector.horizontal"),
             ) { [weak self] _ in
-                let profile = CloudModel(deviceId: Storage.deviceId)
-                _ = ModelManager.shared.newCloudModel(profile: profile)
-                let controller = CloudModelEditorController(identifier: profile.id)
-                self?.navigationController?.pushViewController(controller, animated: true)
+                guard let self else { return }
+                CloudProviderEditorController.present(from: self, provider: nil, preset: .ollama)
             },
             UIAction(
                 title: String(localized: "Connect @ LM Studio"),
                 image: .init(systemName: "cable.connector.horizontal"),
             ) { [weak self] _ in
-                let profile = CloudModel(deviceId: Storage.deviceId)
-                _ = ModelManager.shared.newCloudModel(profile: profile)
-                let controller = CloudModelEditorController(identifier: profile.id)
-                self?.navigationController?.pushViewController(controller, animated: true)
+                guard let self else { return }
+                CloudProviderEditorController.present(from: self, provider: nil, preset: .lmStudio)
             },
         ]
     }
@@ -130,6 +144,27 @@ extension SettingController.SettingContent.ModelController {
     /// and any toolbar / accessory menus can reuse the same actions.
     func createModelMenuElements(for itemIdentifier: ModelViewModel) -> [UIMenuElement] {
         switch itemIdentifier.type {
+        case .provider:
+            [
+                UIAction(
+                    title: String(localized: "Edit Provider"),
+                    image: UIImage(systemName: "pencil"),
+                ) { [weak self] _ in
+                    guard let self,
+                          let provider = ModelManager.shared.cloudProviders.first(where: { $0.id == itemIdentifier.identifier })
+                    else { return }
+                    CloudProviderEditorController.present(from: self, provider: provider)
+                },
+                UIMenu(options: .displayInline, children: [
+                    UIAction(
+                        title: String(localized: "Delete Provider"),
+                        image: UIImage(systemName: "trash"),
+                        attributes: [.destructive],
+                    ) { [weak self] _ in
+                        self?.confirmDeleteProvider(identifier: itemIdentifier.identifier)
+                    },
+                ]),
+            ]
         case .local:
             Self.makeActionMenuElements(
                 for: itemIdentifier.identifier,
@@ -266,6 +301,19 @@ extension SettingController.SettingContent.ModelController {
                     },
                 ),
             )
+        }
+    }
+}
+
+extension SettingController.SettingContent.ModelController {
+    func confirmDeleteProvider(identifier: String) {
+        guard let provider = ModelManager.shared.cloudProviders.first(where: { $0.id == identifier }) else { return }
+        let count = provider.modelIDs.count
+        presentDeleteConfirmation(
+            title: "Delete Provider",
+            message: "Delete this provider and its \(count) models? Conversations keep their messages.",
+        ) {
+            ModelManager.shared.removeCloudProvider(provider)
         }
     }
 }

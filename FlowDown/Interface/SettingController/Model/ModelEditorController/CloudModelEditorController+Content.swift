@@ -62,6 +62,11 @@ private extension CloudModelEditorController {
         ) { $0.bottom /= 2 }
         addSeparator()
 
+        if let provider = model.flatMap({ ModelManager.shared.cloudProvider(containing: $0.id) }) {
+            stackView.addArrangedSubviewWithMargin(makeProviderView(provider: provider))
+            addSeparator()
+        }
+
         stackView.addArrangedSubviewWithMargin(makeEndpointView(model: model))
         addSeparator()
 
@@ -73,7 +78,7 @@ private extension CloudModelEditorController {
 
         addFooter(
             ConfigurableSectionFooterView()
-                .with(footer: "The endpoint needs to be written in full path to work. The path is usually /v1/chat/completions."),
+                .with(footer: "The endpoint must be the full request URL, such as /v1/chat/completions, /v1/responses or /v1/messages. To change the endpoint or API key of every model from this provider at once, edit the provider."),
         ) {
             $0.top /= 2
             $0.bottom = 0
@@ -191,8 +196,23 @@ private extension CloudModelEditorController {
         stackView.addArrangedSubviewWithMargin(UIView())
     }
 
+    func makeProviderView(provider: CloudProvider) -> ConfigurableInfoView {
+        let view = ConfigurableInfoView().setTapBlock { [weak self] _ in
+            guard let self,
+                  let provider = ModelManager.shared.cloudProvider(containing: identifier)
+            else { return }
+            CloudProviderEditorController.present(from: self, provider: provider)
+        }
+        view.configure(icon: .init(systemName: "server.rack"))
+        view.configure(title: "Provider")
+        view.configure(description: "Connection settings shared by all models from this provider.")
+        view.configure(value: provider.displayName)
+        return view
+    }
+
     func makeEndpointView(model: CloudModel?) -> ConfigurableInfoView {
         let view = ConfigurableInfoView()
+        endpointInfoView = view
         view.configure(icon: .init(systemName: "link"))
         view.configure(title: "Inference Endpoint")
         view.configure(description: "This endpoint is used to send inference requests.")
@@ -429,23 +449,31 @@ private extension CloudModelEditorController {
         responseFormatInfoView = view
 
         view.configure(icon: .init(systemName: "arrow.triangle.2.circlepath"))
-        view.configure(title: "Content Format")
-        view.configure(description: "Select which format this model should use when performing network requests.")
+        view.configure(title: "API Type")
+        view.configure(description: "The API contract this model uses for requests.")
 
-        let currentFormat = model?.response_format ?? .default
-        view.configure(value: currentFormat.localizedTitle)
+        let currentContract = model?.apiContract ?? .chatCompletions
+        view.configure(value: currentContract.localizedTitle)
         view.use { [weak self, weak view] in
             guard let self, let view else { return [] }
-            let selected = ModelManager.shared.responseFormat(for: identifier)
-            return CloudModel.ResponseFormat.allCases.map { format in
-                UIAction(
-                    title: format.localizedTitle,
-                    state: format == selected ? .on : .off,
+            let selected = ModelManager.shared.apiContract(for: identifier)
+            return CloudModelAPIContract.allCases.map { contract in
+                let action = UIAction(
+                    title: contract.localizedTitle,
+                    image: UIImage(systemName: contract.icon),
+                    state: contract == selected ? .on : .off,
                 ) { [weak self] _ in
                     guard let self else { return }
-                    ModelManager.shared.updateResponseFormat(for: identifier, to: format)
-                    view.configure(value: format.localizedTitle)
+                    ModelManager.shared.updateAPIContract(for: identifier, to: contract)
+                    view.configure(value: contract.localizedTitle)
+                    if let endpoint = ModelManager.shared.cloudModel(identifier: identifier)?.endpoint,
+                       !endpoint.isEmpty
+                    {
+                        endpointInfoView?.configure(value: endpoint)
+                    }
                 }
+                action.subtitle = contract.localizedDescription
+                return action
             }
         }
         return view

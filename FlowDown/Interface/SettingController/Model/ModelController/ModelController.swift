@@ -181,11 +181,13 @@ extension SettingController.SettingContent {
         let dataSource: DataSource
 
         enum ModelType: String {
+            case provider
             case local
             case cloud
 
             var title: String {
                 switch self {
+                case .provider: String(localized: "Providers")
                 case .local: String(localized: "Local Model")
                 case .cloud: String(localized: "Cloud Model")
                 }
@@ -217,6 +219,10 @@ extension SettingController.SettingContent {
             dataSource = .init(tableView: tableView) { tableView, indexPath, itemIdentifier in
                 let cell = tableView.dequeueReusableCell(withIdentifier: "ModelCell", for: indexPath) as! ModelCell
                 switch itemIdentifier.type {
+                case .provider:
+                    if let provider = ModelManager.shared.cloudProviders.first(where: { $0.id == itemIdentifier.identifier }) {
+                        cell.update(type: .provider, name: provider.displayName, descriptions: provider.listDescriptions)
+                    }
                 case .local:
                     if let model = ModelManager.shared.localModel(identifier: itemIdentifier.identifier) {
                         let name = model.modelDisplayName
@@ -317,6 +323,18 @@ extension SettingController.SettingContent {
 
         func updateDataSource() {
             var snapshot = Snapshot()
+            let providers = ModelManager.shared.cloudProviders.filter {
+                searchKey.isEmpty
+                    || $0.displayName.localizedCaseInsensitiveContains(searchKey)
+                    || $0.endpoint.localizedCaseInsensitiveContains(searchKey)
+            }
+            if !providers.isEmpty, showCloudModels {
+                snapshot.appendSections([.provider])
+                snapshot.appendItems(
+                    providers.map { ModelViewModel(type: .provider, identifier: $0.id) },
+                    toSection: .provider
+                )
+            }
             let localModels = ModelManager.shared.localModels.value.filter {
                 searchKey.isEmpty || $0.model_identifier.localizedCaseInsensitiveContains(searchKey)
             }

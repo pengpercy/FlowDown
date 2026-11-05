@@ -393,6 +393,16 @@ extension ModelManager {
         cloudModel(identifier: identifier)?.response_format ?? .default
     }
 
+    func apiContract(for identifier: ModelIdentifier) -> CloudModelAPIContract {
+        cloudModel(identifier: identifier)?.apiContract ?? .chatCompletions
+    }
+
+    func updateAPIContract(for identifier: ModelIdentifier, to contract: CloudModelAPIContract) {
+        editCloudModel(identifier: identifier) { model in
+            model.apply(contract: contract)
+        }
+    }
+
     func updateResponseFormat(
         for identifier: ModelIdentifier,
         to newFormat: CloudModel.ResponseFormat,

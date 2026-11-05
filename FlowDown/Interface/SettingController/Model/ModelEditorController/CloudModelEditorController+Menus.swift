@@ -168,26 +168,18 @@ extension CloudModelEditorController {
 
         guard !trimmed.isEmpty else { return }
 
-        guard let inferredFormat = CloudModel.ResponseFormat.inferredFormat(fromEndpoint: trimmed) else {
+        guard let inferredContract = CloudModelAPIContract.inferred(fromEndpoint: trimmed) else {
             presentEndpointFormatMismatchAlert()
             return
         }
 
-        let currentFormat = ModelManager.shared.responseFormat(for: modelId)
-        if currentFormat != inferredFormat {
-            ModelManager.shared.updateResponseFormat(for: modelId, to: inferredFormat)
+        if ModelManager.shared.apiContract(for: modelId) != inferredContract {
+            // The endpoint already carries the matching path, so this only updates the
+            // stored format and the default model list template.
+            ModelManager.shared.updateAPIContract(for: modelId, to: inferredContract)
         }
 
-        responseFormatInfoView?.configure(value: inferredFormat.localizedTitle)
-
-        if let model = ModelManager.shared.cloudModel(identifier: modelId) {
-            let defaultEndpoints = Set(CloudModel.ResponseFormat.allCases.map(\.defaultModelListEndpoint))
-            if defaultEndpoints.contains(model.model_list_endpoint) {
-                ModelManager.shared.editCloudModel(identifier: modelId) { editable in
-                    editable.update(\.model_list_endpoint, to: inferredFormat.defaultModelListEndpoint)
-                }
-            }
-        }
+        responseFormatInfoView?.configure(value: inferredContract.localizedTitle)
     }
 
     func presentEndpointFormatMismatchAlert() {
@@ -195,7 +187,7 @@ extension CloudModelEditorController {
             guard let self else { return }
             let alert = AlertViewController(
                 title: "Unable to Match Request Format",
-                message: "This data has been saved, but we could not match a request format for this endpoint. This is usually a mistake. In most cases your request should end with /v1/chat/completions.",
+                message: "This data has been saved, but we could not match an API type for this endpoint. This is usually a mistake. The endpoint should end with /v1/chat/completions, /v1/responses or /v1/messages.",
             ) { context in
                 context.addAction(title: "OK", attribute: .accent) {
                     context.dispose()

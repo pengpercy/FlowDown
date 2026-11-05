@@ -213,29 +213,9 @@ extension ModelManager {
             return AppleIntelligenceChatClient()
         }
         if let model = cloudModel(identifier: identifier) {
-            let endpoint = resolveEndpointComponents(from: model.endpoint)
             // Use additionalBodyField directly without merging model's bodyFields
             // Callers should explicitly merge bodyFields if needed
-            switch model.response_format {
-            case .chatCompletions:
-                return RemoteCompletionsChatClient(
-                    model: model.model_identifier,
-                    baseURL: endpoint.baseURL,
-                    path: endpoint.path,
-                    apiKey: model.token,
-                    additionalHeaders: model.headers,
-                    additionalBodyField: additionalBodyField,
-                )
-            case .responses:
-                return RemoteResponsesChatClient(
-                    model: model.model_identifier,
-                    baseURL: endpoint.baseURL,
-                    path: endpoint.path,
-                    apiKey: model.token,
-                    additionalHeaders: model.headers,
-                    additionalBodyField: additionalBodyField,
-                )
-            }
+            return makeCloudChatService(for: model, additionalBodyField: additionalBodyField)
         } else if let model = localModel(identifier: identifier) {
             let preferredKind: MLXModelKind = model.capabilities.contains(.visual) ? .vlm : .llm
             return MLXChatClient(
@@ -247,6 +227,42 @@ extension ModelManager {
                 domain: "Model",
                 code: -1,
                 userInfo: [NSLocalizedDescriptionKey: String(localized: "Model not found.")],
+            )
+        }
+    }
+
+    /// Picks the client that speaks the model's API contract.
+    func makeCloudChatService(
+        for model: CloudModel,
+        additionalBodyField: [String: Any],
+    ) -> any ChatService {
+        let endpoint = resolveEndpointComponents(from: model.endpoint)
+        switch model.apiContract {
+        case .chatCompletions:
+            return RemoteCompletionsChatClient(
+                model: model.model_identifier,
+                baseURL: endpoint.baseURL,
+                path: endpoint.path,
+                apiKey: model.token,
+                additionalHeaders: model.headers,
+                additionalBodyField: additionalBodyField,
+            )
+        case .responses:
+            return RemoteResponsesChatClient(
+                model: model.model_identifier,
+                baseURL: endpoint.baseURL,
+                path: endpoint.path,
+                apiKey: model.token,
+                additionalHeaders: model.headers,
+                additionalBodyField: additionalBodyField,
+            )
+        case .anthropicMessages:
+            return AnthropicMessagesChatClient(
+                model: model.model_identifier,
+                endpoint: model.endpoint,
+                apiKey: model.token,
+                additionalHeaders: model.headers,
+                additionalBodyField: additionalBodyField,
             )
         }
     }

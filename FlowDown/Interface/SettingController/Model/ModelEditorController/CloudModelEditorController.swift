@@ -16,6 +16,7 @@ class CloudModelEditorController: StackScrollController {
 
     var cancellables: Set<AnyCancellable> = .init()
     weak var responseFormatInfoView: ConfigurableInfoView?
+    weak var endpointInfoView: ConfigurableInfoView?
     let serverModelListLoader = ServerModelListLoader()
     /// Holds the model actions; exports started from it anchor their share sheet here.
     let actionsBarItem = UIBarButtonItem(

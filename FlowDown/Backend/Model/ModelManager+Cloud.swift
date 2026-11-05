@@ -82,25 +82,16 @@ extension ModelManager {
             block([])
             return
         }
-        let endpoint = model.endpoint
-        var model_list_endpoint = model.model_list_endpoint
-        if model_list_endpoint.contains("$INFERENCE_ENDPOINT$") {
-            if model.endpoint.isEmpty {
-                block([])
-                return
-            }
-            model_list_endpoint = model_list_endpoint.replacingOccurrences(of: "$INFERENCE_ENDPOINT$", with: endpoint)
-        }
-        guard !model_list_endpoint.isEmpty, let url = URL(string: model_list_endpoint)?.standardized else {
+        guard let url = CloudProvider.resolveModelListURL(
+            template: model.model_list_endpoint,
+            endpoint: model.endpoint,
+        ) else {
             block([])
             return
         }
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 30)
-        if !model.token.isEmpty { request.setValue("Bearer \(model.token)", forHTTPHeaderField: "Authorization") }
-        // model.headers can override default headers including Authorization
-        for (key, value) in model.headers {
-            request.setValue(value, forHTTPHeaderField: key)
-        }
+        // Custom headers can override the default credentials, including Authorization.
+        CloudProvider.authorize(&request, contract: model.apiContract, token: model.token, headers: model.headers)
         let deliver: ([String]) -> Void = { input in
             Task { @MainActor in
                 block(input)
@@ -125,44 +116,9 @@ extension ModelManager {
                 }
                 return deliver([])
             }
-            let value = self.scrubModel(fromDic: json).sorted()
+            let value = Self.scrubModelIdentifiers(from: json).sorted()
             deliver(value)
         }.resume()
-    }
-
-    private func scrubModel(fromDic dic: Any) -> [String] {
-        // Common OpenAI-style: { data: [{id: ""}, ...] }
-        if let dict = dic as? [String: Any] {
-            if let data = dict["data"] as? [[String: Any]] {
-                return data.compactMap { $0["id"] as? String }
-            }
-            if let data = dict["data"] as? [String] {
-                return data
-            }
-            // Some providers: { models: [ { id/name/model: "..." } ] }
-            if let models = dict["models"] as? [[String: Any]] {
-                return models.compactMap { item in
-                    (item["id"] as? String)
-                        ?? (item["name"] as? String)
-                        ?? (item["model"] as? String)
-                }
-            }
-            if let models = dict["models"] as? [String] {
-                return models
-            }
-            // Generic container: { items: [...] }
-            if let items = dict["items"] as? [[String: Any]] {
-                return items.compactMap { $0["id"] as? String ?? $0["name"] as? String }
-            }
-        }
-        // Direct arrays
-        if let array = dic as? [[String: Any]] {
-            return array.compactMap { $0["id"] as? String ?? $0["name"] as? String }
-        }
-        if let array = dic as? [String] {
-            return array
-        }
-        return []
     }
 
     func importCloudModel(at url: URL) throws -> CloudModel {

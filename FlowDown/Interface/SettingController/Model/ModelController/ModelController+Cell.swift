@@ -8,6 +8,18 @@
 import ConfigurableKit
 import UIKit
 
+extension CloudProvider {
+    /// Secondary line for the provider row in model management.
+    var listDescriptions: [String] {
+        var items = [contract.localizedTitle]
+        items.append(String(localized: "\(modelIDs.count) models"))
+        if let host = URL(string: endpoint)?.host, host != displayName {
+            items.append(host)
+        }
+        return items
+    }
+}
+
 extension SettingController.SettingContent.ModelController {
     class ModelCell: UITableViewCell {
         let content = ConfigurablePageView { fatalError() }
@@ -32,11 +44,13 @@ extension SettingController.SettingContent.ModelController {
         }
 
         enum ModelType {
+            case provider
             case local
             case cloud
 
             var image: UIImage {
                 switch self {
+                case .provider: UIImage(systemName: "server.rack") ?? .modelCloud
                 case .local: .modelLocal
                 case .cloud: .modelCloud
                 }
