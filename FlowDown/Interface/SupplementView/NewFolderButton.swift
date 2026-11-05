@@ -5,15 +5,23 @@
 //  Created by 秋星桥 on 8/22/26.
 //
 
-import AlertController
 import UIKit
 
+/// The compact "+" shown next to the sidebar's Folders header.
 final class NewFolderButton: UIButton {
     init() {
         super.init(frame: .zero)
-        setImage(UIImage(systemName: "folder.badge.plus"), for: .normal)
-        tintColor = .label
+        setImage(
+            UIImage(
+                systemName: "plus",
+                withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold),
+            ),
+            for: .normal,
+        )
+        tintColor = .secondaryLabel
         accessibilityLabel = String(localized: "New Folder")
+        toolTip = String(localized: "New Folder")
+        isPointerInteractionEnabled = true
         addTarget(self, action: #selector(createFolder), for: .touchUpInside)
     }
 
@@ -24,15 +32,6 @@ final class NewFolderButton: UIButton {
 
     @objc private func createFolder() {
         guard let controller = parentViewController else { return }
-        let alert = AlertInputViewController(
-            title: String(localized: "New Folder"),
-            message: String(localized: "Create an empty folder for conversations."),
-            placeholder: String(localized: "Folder Name"),
-            text: "",
-        ) { text in
-            let title = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            ConversationManager.shared.createFolder(title: title.isEmpty ? String(localized: "New Folder") : title)
-        }
-        controller.present(alert, animated: true)
+        ConversationManager.shared.presentNewFolderAlert(from: controller)
     }
 }
