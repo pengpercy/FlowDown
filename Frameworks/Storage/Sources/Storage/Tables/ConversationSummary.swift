@@ -8,7 +8,7 @@
 import Foundation
 import WCDBSwift
 
-public final class ConversationSummary: Identifiable, Codable, TableNamed, DeviceOwned, TableCodable {
+public final class ConversationSummary: Identifiable, Codable, TableNamed, TableCodable {
     public static let tableName: String = "ConversationSummary"
 
     static func objectId(forConversationID conversationId: String) -> String {
@@ -73,7 +73,10 @@ public final class ConversationSummary: Identifiable, Codable, TableNamed, Devic
 
 extension ConversationSummary: Updatable {
     @discardableResult
-    public func update<Value: Equatable>(_ keyPath: ReferenceWritableKeyPath<ConversationSummary, Value>, to newValue: Value) -> Bool {
+    public func update<Value: Equatable>(
+        _ keyPath: ReferenceWritableKeyPath<ConversationSummary, Value>,
+        to newValue: Value
+    ) -> Bool {
         let oldValue = self[keyPath: keyPath]
         guard oldValue != newValue else { return false }
         assign(keyPath, to: newValue)
@@ -82,11 +85,6 @@ extension ConversationSummary: Updatable {
 
     public func assign<Value>(_ keyPath: ReferenceWritableKeyPath<ConversationSummary, Value>, to newValue: Value) {
         self[keyPath: keyPath] = newValue
-        markModified()
-    }
-
-    package func update(_ block: (ConversationSummary) -> Void) {
-        block(self)
         markModified()
     }
 }

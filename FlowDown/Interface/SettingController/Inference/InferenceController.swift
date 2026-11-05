@@ -227,50 +227,40 @@ extension SettingController.SettingContent {
         func updateDefaultModelinfoFile() {
             ModelManager.shared.checkDefaultModels()
 
-            let defConvId = ModelManager.ModelIdentifier.defaultModelForConversation
-            var handledConvModel = false
-            if #available(iOS 26.0, macCatalyst 26.0, *), defConvId == AppleIntelligenceModel.shared.modelIdentifier {
-                defaultConversationModel.configure(value: AppleIntelligenceModel.shared.modelDisplayName)
-                // Add availability status as subtitle when Apple Intelligence is selected
-                if !AppleIntelligenceModel.shared.isAvailable {
-                    defaultConversationModel.configure(description: "Status: \(AppleIntelligenceModel.shared.availabilityStatus)")
+            func displayName(for id: ModelManager.ModelIdentifier) -> String {
+                if let localModel = ModelManager.shared.localModel(identifier: id) {
+                    return localModel.model_identifier
                 }
-                defaultConversationModel.use { [weak self] in
-                    guard let self else { return [] }
-                    return ModelManager.shared.buildModelSelectionMenu(
-                        currentSelection: ModelManager.ModelIdentifier.defaultModelForConversation,
-                        requiresCapabilities: [],
-                        allowSelectionWithNone: true,
-                        onCompletion: { [weak self] identifier in
-                            ModelManager.ModelIdentifier.defaultModelForConversation = identifier
-                            self?.updateDefaultModelinfoFile()
-                        },
-                        includeQuickActions: false,
-                    )
+                if let cloudModel = ModelManager.shared.cloudModel(identifier: id) {
+                    return cloudModel.modelFullName
                 }
-                handledConvModel = true
+                return String(localized: "Not Configured")
             }
-            if !handledConvModel {
-                if let localModel = ModelManager.shared.localModel(identifier: defConvId) {
-                    defaultConversationModel.configure(value: localModel.model_identifier)
-                } else if let cloudModel = ModelManager.shared.cloudModel(identifier: defConvId) {
-                    defaultConversationModel.configure(value: cloudModel.modelFullName)
+
+            func configureModelRow(_ row: ConfigurableInfoView, id: ModelManager.ModelIdentifier) {
+                if #available(iOS 26.0, macCatalyst 26.0, *), id == AppleIntelligenceModel.shared.modelIdentifier {
+                    row.configure(value: AppleIntelligenceModel.shared.modelDisplayName)
+                    if !AppleIntelligenceModel.shared.isAvailable {
+                        row.configure(description: "Status: \(AppleIntelligenceModel.shared.availabilityStatus)")
+                    }
                 } else {
-                    defaultConversationModel.configure(value: String(localized: "Not Configured"))
+                    row.configure(value: displayName(for: id))
                 }
-                defaultConversationModel.use { [weak self] in
-                    guard let self else { return [] }
-                    return ModelManager.shared.buildModelSelectionMenu(
-                        currentSelection: ModelManager.ModelIdentifier.defaultModelForConversation,
-                        requiresCapabilities: [],
-                        allowSelectionWithNone: true,
-                        onCompletion: { [weak self] identifier in
-                            ModelManager.ModelIdentifier.defaultModelForConversation = identifier
-                            self?.updateDefaultModelinfoFile()
-                        },
-                        includeQuickActions: false,
-                    )
-                }
+            }
+
+            configureModelRow(defaultConversationModel, id: ModelManager.ModelIdentifier.defaultModelForConversation)
+            defaultConversationModel.use { [weak self] in
+                guard let self else { return [] }
+                return ModelManager.shared.buildModelSelectionMenu(
+                    currentSelection: ModelManager.ModelIdentifier.defaultModelForConversation,
+                    requiresCapabilities: [],
+                    allowSelectionWithNone: true,
+                    onCompletion: { [weak self] identifier in
+                        ModelManager.ModelIdentifier.defaultModelForConversation = identifier
+                        self?.updateDefaultModelinfoFile()
+                    },
+                    includeQuickActions: false,
+                )
             }
 
             // When "Use Chat Model" is enabled, show the chat model
@@ -281,24 +271,7 @@ extension SettingController.SettingContent {
                 ModelManager.ModelIdentifier.storedAuxiliaryTaskModel
             }
 
-            var handledAuxModel = false
-            if #available(iOS 26.0, macCatalyst 26.0, *), devAuxId == AppleIntelligenceModel.shared.modelIdentifier {
-                defaultAuxiliaryModel.configure(value: AppleIntelligenceModel.shared.modelDisplayName)
-                // Add availability status as subtitle when Apple Intelligence is selected
-                if !AppleIntelligenceModel.shared.isAvailable {
-                    defaultAuxiliaryModel.configure(description: "Status: \(AppleIntelligenceModel.shared.availabilityStatus)")
-                }
-                handledAuxModel = true
-            }
-            if !handledAuxModel {
-                if let localModel = ModelManager.shared.localModel(identifier: devAuxId) {
-                    defaultAuxiliaryModel.configure(value: localModel.model_identifier)
-                } else if let cloudModel = ModelManager.shared.cloudModel(identifier: devAuxId) {
-                    defaultAuxiliaryModel.configure(value: cloudModel.modelFullName)
-                } else {
-                    defaultAuxiliaryModel.configure(value: String(localized: "Not Configured"))
-                }
-            }
+            configureModelRow(defaultAuxiliaryModel, id: devAuxId)
 
             defaultAuxiliaryModel.use { [weak self] in
                 guard let self else { return [] }
@@ -331,13 +304,7 @@ extension SettingController.SettingContent {
             }
 
             let devAuxVisualId = ModelManager.ModelIdentifier.defaultModelForAuxiliaryVisualTask
-            if let localModel = ModelManager.shared.localModel(identifier: devAuxVisualId) {
-                defaultAuxiliaryVisualModel.configure(value: localModel.model_identifier)
-            } else if let cloudModel = ModelManager.shared.cloudModel(identifier: devAuxVisualId) {
-                defaultAuxiliaryVisualModel.configure(value: cloudModel.modelFullName)
-            } else {
-                defaultAuxiliaryVisualModel.configure(value: String(localized: "Not Configured"))
-            }
+            defaultAuxiliaryVisualModel.configure(value: displayName(for: devAuxVisualId))
 
             defaultAuxiliaryVisualModel.use { [weak self] in
                 guard let self else { return [] }

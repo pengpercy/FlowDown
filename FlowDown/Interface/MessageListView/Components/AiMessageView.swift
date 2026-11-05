@@ -8,16 +8,25 @@ import MarkdownView
 import Storage
 import UIKit
 
+/// The agent's reply, drawn by `ChatMarkdownView`: new text fades in while
+/// it streams, and the last chunk finishes fading before streaming ends.
 final class AiMessageView: MessageListRowView {
-    private(set) lazy var markdownView: MarkdownTextView = .init().with {
+    private(set) lazy var markdownView: ChatMarkdownView = .init().with {
         $0.throttleInterval = 1 / 60
     }
 
     private var representedMessageID: Message.ID?
+    private var representedPackage: MarkdownContent?
+    /// The reply has finished, but its last text is still fading in.
+    private var finishesStreamWhenStill = false
+    private var revealObservation: NSKeyValueObservation?
 
-    var codeExpandedBlocks: Set<Int> = [] {
-        didSet { markdownView.expandedCodeBlocks = codeExpandedBlocks }
+    /// Which of this reply's fenced code blocks show every line.
+    var codeExpandedBlocks: Set<Int> {
+        get { markdownView.expandedCodeBlocks }
+        set { markdownView.expandedCodeBlocks = newValue }
     }
+
     var codeBlockExpansionHandler: ((_ blockIndex: Int, _ isExpanded: Bool) -> Void)?
 
     var linkTapHandler: ((LinkPayload, NSRange, CGPoint) -> Void)? {
@@ -32,7 +41,17 @@ final class AiMessageView: MessageListRowView {
 
     init() {
         super.init(frame: .zero)
-        configureSubviews()
+        contentView.addSubview(markdownView)
+        markdownView.codeBlockExpansionDidChange = { [weak self] blockIndex, isExpanded in
+            self?.codeBlockExpansionHandler?(blockIndex, isExpanded)
+        }
+        revealObservation = markdownView.streamLabel.observe(\.isAnimating) { [weak self] _, _ in
+            // Called while the label is still taking its animation down.
+            DispatchQueue.main.async { [weak self] in
+                guard let self, finishesStreamWhenStill, !markdownView.streamLabel.isAnimating else { return }
+                finishStream()
+            }
+        }
     }
 
     @available(*, unavailable)
@@ -40,55 +59,48 @@ final class AiMessageView: MessageListRowView {
         fatalError("init(coder:) has not been implemented")
     }
 
-    private func configureSubviews() {
-        markdownView.codeBlockExpansionDidChange = { [weak self] blockIndex, isExpanded in
-            self?.codeBlockExpansionHandler?(blockIndex, isExpanded)
-        }
-        contentView.addSubview(markdownView)
-    }
-
     /// Puts the message content on screen. The first fill for a message is
-    /// applied synchronously so a freshly (re)used row never renders blank;
-    /// subsequent updates to the same message stream through the throttled
-    /// path and update the visible content in place.
-    func setMarkdownPackage(_ package: MarkdownContent, for messageID: Message.ID) {
-        if representedMessageID == messageID {
-            markdownView.setContent(package)
+    /// applied synchronously so a new row never renders blank; subsequent
+    /// updates to the same message go through the stream view, which fades
+    /// new text in while `isStreaming` and throttles otherwise.
+    ///
+    /// The list keeps this row for its message, so mounting it again hands
+    /// back the content it already shows; that is skipped rather than rebuilt.
+    func setMarkdownPackage(_ package: MarkdownContent, for messageID: Message.ID, isStreaming: Bool) {
+        let firstFill = representedMessageID != messageID
+        markdownView.streamIdentity = messageID
+        let animates = !UIAccessibility.isReduceMotionEnabled
+        // The update that ends a reply often brings its last chunk too.
+        // Turning streaming off now would show that chunk and the text
+        // still fading at once, so it stays on until the label is still.
+        if !isStreaming, animates, !firstFill, markdownView.isStreaming {
+            finishesStreamWhenStill = true
         } else {
-            representedMessageID = messageID
-            markdownView.setContentImmediately(package)
+            finishesStreamWhenStill = false
+            markdownView.isStreaming = isStreaming && animates
+        }
+        if package !== representedPackage {
+            representedPackage = package
+            if firstFill {
+                representedMessageID = messageID
+                markdownView.setContentImmediately(package)
+            } else {
+                markdownView.setContent(package)
+            }
+        }
+        if finishesStreamWhenStill, !markdownView.streamLabel.isAnimating {
+            finishStream()
         }
     }
 
-    override func prepareForReuse() {
-        super.prepareForReuse()
-        representedMessageID = nil
-        codeExpandedBlocks = []
-        codeBlockExpansionHandler = nil
-        // Parked cells still receive CodeHighlighter notifications which trigger
-        // a full document rebuild; empty their content so that rebuild is free.
-        markdownView.reset()
+    private func finishStream() {
+        finishesStreamWhenStill = false
+        markdownView.isStreaming = false
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
         markdownView.frame = contentView.bounds
         markdownView.trackedScrollView = nearestScrollView
-        // Force internal layout to ensure code block subviews are properly
-        // positioned after content updates, preventing the last code block
-        // from appearing blank until a window resize triggers a relayout.
-        markdownView.setNeedsLayout()
-        markdownView.layoutIfNeeded()
-    }
-
-    override func didMoveToWindow() {
-        super.didMoveToWindow()
-        // A conversation opened for the first time installs its rows while the
-        // hierarchy is not attached to a window yet. Force one real layout pass
-        // once it is, so fenced-code views placed against the detached tree are
-        // re-synced instead of waiting for a window resize.
-        guard window != nil else { return }
-        setNeedsLayout()
-        layoutIfNeeded()
     }
 }

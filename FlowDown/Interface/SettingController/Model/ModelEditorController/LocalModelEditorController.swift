@@ -43,6 +43,17 @@ class LocalModelEditorController: StackScrollController {
 
     var cancellables: Set<AnyCancellable> = .init()
 
+    /// Holds the model actions; exports started from it anchor their share sheet here.
+    private let actionsBarItem = UIBarButtonItem(
+        image: UIImage(systemName: "ellipsis.circle"),
+        style: .plain,
+        target: nil,
+        action: nil,
+    )
+
+    /// `UIContextMenuInteraction` holds its delegate weakly, so the controller keeps them alive.
+    private var contextMenuDelegates: [any UIContextMenuInteractionDelegate] = []
+
     deinit {
         cancellables.forEach { $0.cancel() }
         cancellables.removeAll()
@@ -58,12 +69,9 @@ class LocalModelEditorController: StackScrollController {
             target: self,
             action: #selector(checkTapped),
         )
-        let actionsItem = UIBarButtonItem(
-            image: UIImage(systemName: "ellipsis.circle"),
-            style: .plain,
-            target: nil,
-            action: nil,
-        )
+        confirmItem.title = String(localized: "Done")
+        let actionsItem = actionsBarItem
+        actionsItem.title = String(localized: "More Actions")
         actionsItem.accessibilityLabel = String(localized: "More Actions")
         actionsItem.menu = buildActionsMenu()
         navigationItem.rightBarButtonItems = [confirmItem, actionsItem]
@@ -133,13 +141,15 @@ class LocalModelEditorController: StackScrollController {
         stackView.addArrangedSubview(SeparatorView())
 
         let idView = ConfigurableInfoView()
-        let idInteraction = UIContextMenuInteraction(delegate: SimpleCopyMenuDelegate(
+        let idMenuDelegate = SimpleCopyMenuDelegate(
             view: idView,
             title: "Copy",
             actionTitle: "Identifier",
             actionIcon: "person.crop.square.filled.and.at.rectangle",
             copyText: { model?.model_identifier ?? "" },
-        ))
+        )
+        contextMenuDelegates.append(idMenuDelegate)
+        let idInteraction = UIContextMenuInteraction(delegate: idMenuDelegate)
         idView.valueLabel.addInteraction(idInteraction)
         idView.configure(icon: .init(systemName: "person.crop.square.filled.and.at.rectangle"))
         idView.configure(title: "Identifier")
@@ -149,10 +159,12 @@ class LocalModelEditorController: StackScrollController {
         stackView.addArrangedSubview(SeparatorView())
 
         let sizeView = ConfigurableInfoView()
-        let sizeInteraction = UIContextMenuInteraction(delegate: CalibrateSizeMenuDelegate(
+        let sizeMenuDelegate = CalibrateSizeMenuDelegate(
             view: sizeView,
             modelId: identifier,
-        ))
+        )
+        contextMenuDelegates.append(sizeMenuDelegate)
+        let sizeInteraction = UIContextMenuInteraction(delegate: sizeMenuDelegate)
         sizeView.valueLabel.addInteraction(sizeInteraction)
         sizeView.configure(icon: .init(systemName: "internaldrive"))
         sizeView.configure(title: "Size")
@@ -162,13 +174,15 @@ class LocalModelEditorController: StackScrollController {
         stackView.addArrangedSubview(SeparatorView())
 
         let dateView = ConfigurableInfoView()
-        let dateInteraction = UIContextMenuInteraction(delegate: SimpleCopyMenuDelegate(
+        let dateMenuDelegate = SimpleCopyMenuDelegate(
             view: dateView,
             title: "Copy",
             actionTitle: "Download Date",
             actionIcon: "timer",
             copyText: { dateFormatter.string(from: model?.downloaded ?? .distantPast) },
-        ))
+        )
+        contextMenuDelegates.append(dateMenuDelegate)
+        let dateInteraction = UIContextMenuInteraction(delegate: dateMenuDelegate)
         dateView.valueLabel.addInteraction(dateInteraction)
         dateView.configure(icon: .init(systemName: "timer"))
         dateView.configure(title: "Download Date")
@@ -361,7 +375,7 @@ class LocalModelEditorController: StackScrollController {
             guard let url else { throw NSError() }
             await completionHandler {
                 DisposableExporter(deletableItem: url, title: "Export Model")
-                    .run(anchor: self.navigationController?.view ?? self.view)
+                    .run(anchor: self.actionsBarItem, presenter: self)
             }
         }
     }
@@ -405,7 +419,13 @@ private class SimpleCopyMenuDelegate: NSObject, UIContextMenuInteractionDelegate
     let actionIcon: String
     let copyText: () -> String
 
-    init(view: ConfigurableInfoView, title: String, actionTitle: String, actionIcon: String, copyText: @escaping () -> String) {
+    init(
+        view: ConfigurableInfoView,
+        title: String,
+        actionTitle: String,
+        actionIcon: String,
+        copyText: @escaping () -> String
+    ) {
         self.view = view
         self.title = title
         self.actionTitle = actionTitle

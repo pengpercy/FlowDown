@@ -14,9 +14,8 @@ public extension Storage {
         case retrieveFailed(String)
         case deleteFailed(String)
         case memoryNotFound(String)
-        case databaseError(String)
 
-        var localizedDescription: String {
+        public var errorDescription: String? {
             switch self {
             case let .insertFailed(message):
                 "Failed to insert memory: \(message)"
@@ -26,8 +25,6 @@ public extension Storage {
                 "Failed to delete memory: \(message)"
             case let .memoryNotFound(id):
                 "Memory with ID \(id) not found"
-            case let .databaseError(message):
-                "Database error: \(message)"
             }
         }
     }
@@ -41,43 +38,8 @@ public extension Storage {
             return
         }
 
-        let modified = Date.now
-//        memorys.forEach { $0.markModified(modified) }
-
         do {
-            try runTransaction { [weak self] in
-                guard let self else { return }
-
-                let diff = try diffSyncable(objects: memorys, handle: $0)
-                guard !diff.isEmpty else {
-                    return
-                }
-
-                // 恢复修改时间
-                diff.insert.forEach { $0.markModified($0.creation) }
-
-                try $0.insertOrReplace(diff.insertOrReplace(), intoTable: Memory.tableName)
-
-                if !diff.deleted.isEmpty {
-                    let deletedIds = diff.deleted.map(\.objectId)
-                    let update = StatementUpdate().update(table: Memory.tableName)
-                        .set(Memory.Properties.removed)
-                        .to(true)
-                        .set(Memory.Properties.modified)
-                        .to(modified)
-                        .where(Memory.Properties.objectId.in(deletedIds))
-
-                    try $0.exec(update)
-                }
-
-                var changes = diff.insert.map { ($0, UploadQueue.Changes.insert) }
-                    + diff.updated.map { ($0, UploadQueue.Changes.update) }
-                    + diff.deleted.map { ($0, UploadQueue.Changes.delete) }
-                // 按 modified 升序
-                changes.sort { $0.0.modified < $1.0.modified }
-
-                try pendingUploadEnqueue(sources: changes, handle: $0)
-            }
+            try putSyncable(memorys)
         } catch {
             throw MemoryError.insertFailed(error.localizedDescription)
         }
@@ -140,7 +102,10 @@ public extension Storage {
 
     func getMemoryCount() throws -> Int {
         do {
-            let objects: [Memory] = try db.getObjects(fromTable: Memory.tableName, where: Memory.Properties.removed == false)
+            let objects: [Memory] = try db.getObjects(
+                fromTable: Memory.tableName,
+                where: Memory.Properties.removed == false
+            )
             return objects.count
         } catch {
             throw MemoryError.retrieveFailed(error.localizedDescription)
@@ -168,19 +133,12 @@ public extension Storage {
         }
     }
 
-    func deleteMemory(id: Memory.ID, handle: Handle? = nil) throws {
+    func deleteMemory(id: Memory.ID) throws {
         do {
-            let existingMemory: Memory? = if let handle {
-                try handle.getObject(
-                    fromTable: Memory.tableName,
-                    where: Memory.Properties.objectId == id,
-                )
-            } else {
-                try db.getObject(
-                    fromTable: Memory.tableName,
-                    where: Memory.Properties.objectId == id,
-                )
-            }
+            let existingMemory: Memory? = try db.getObject(
+                fromTable: Memory.tableName,
+                where: Memory.Properties.objectId == id && Memory.Properties.removed == false,
+            )
 
             guard let existingMemory else {
                 throw MemoryError.memoryNotFound(id)
@@ -195,13 +153,9 @@ public extension Storage {
                 .to(existingMemory.modified)
                 .where(Memory.Properties.objectId == id)
 
-            if let handle {
-                try handle.exec(update)
-            } else {
-                try db.exec(update)
-            }
+            try db.exec(update)
 
-            try pendingUploadEnqueue(sources: [(existingMemory, .delete)], handle: handle)
+            try pendingUploadEnqueue(sources: [(existingMemory, .delete)])
 
         } catch let error as MemoryError {
             throw error
@@ -210,13 +164,12 @@ public extension Storage {
         }
     }
 
-    func deleteAllMemories(handle: Handle? = nil) throws {
+    func deleteAllMemories() throws {
         do {
-            let memorys: [Memory] = if let handle {
-                try handle.getObjects(fromTable: Memory.tableName, where: Memory.Properties.removed == false)
-            } else {
-                try db.getObjects(fromTable: Memory.tableName, where: Memory.Properties.removed == false)
-            }
+            let memorys: [Memory] = try db.getObjects(
+                fromTable: Memory.tableName,
+                where: Memory.Properties.removed == false,
+            )
 
             guard !memorys.isEmpty else {
                 return
@@ -233,13 +186,9 @@ public extension Storage {
                 .to(modified)
                 .where(Memory.Properties.objectId.in(deletedIds))
 
-            if let handle {
-                try handle.exec(update)
-            } else {
-                try db.exec(update)
-            }
+            try db.exec(update)
 
-            try pendingUploadEnqueue(sources: memorys.map { ($0, .delete) }, handle: handle)
+            try pendingUploadEnqueue(sources: memorys.map { ($0, .delete) })
         } catch {
             throw MemoryError.deleteFailed(error.localizedDescription)
         }
@@ -247,7 +196,10 @@ public extension Storage {
 
     func deleteOldMemories(keepCount: Int) throws {
         do {
-            let allMemories: [Memory] = try db.getObjects(fromTable: Memory.tableName, where: Memory.Properties.removed == false)
+            let allMemories: [Memory] = try db.getObjects(
+                fromTable: Memory.tableName,
+                where: Memory.Properties.removed == false
+            )
 
             let totalCount = allMemories.count
             guard totalCount > keepCount else { return }

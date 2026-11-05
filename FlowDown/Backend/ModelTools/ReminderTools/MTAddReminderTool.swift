@@ -71,7 +71,9 @@ class MTAddReminderTool: ModelTool, @unchecked Sendable {
               let title = json["title"] as? String, !title.isEmpty
         else {
             throw NSError(
-                domain: "MTAddReminderTool", code: 400, userInfo: [
+                domain: "MTAddReminderTool",
+                code: 400,
+                userInfo: [
                     NSLocalizedDescriptionKey: String(localized: "A non-empty title is required."),
                 ],
             )
@@ -82,10 +84,14 @@ class MTAddReminderTool: ModelTool, @unchecked Sendable {
         let priority = (json["priority"] as? Int) ?? 0
         let listName = (json["list_name"] as? String) ?? ""
 
-        let dueDate: Date? = dueDateString.isEmpty ? nil : ReminderToolsShared.parseISODate(dueDateString)
-        if !dueDateString.isEmpty, dueDate == nil {
+        let dueDateComponents: DateComponents? = dueDateString.isEmpty
+            ? nil
+            : ReminderToolsShared.dueDateComponents(from: dueDateString)
+        if !dueDateString.isEmpty, dueDateComponents == nil {
             throw NSError(
-                domain: "MTAddReminderTool", code: 400, userInfo: [
+                domain: "MTAddReminderTool",
+                code: 400,
+                userInfo: [
                     NSLocalizedDescriptionKey: String(localized: "Invalid due_date format. Use ISO 8601 UTC."),
                 ],
             )
@@ -96,7 +102,7 @@ class MTAddReminderTool: ModelTool, @unchecked Sendable {
         return try await addWithUserInteraction(
             title: title,
             notes: notes,
-            dueDate: dueDate,
+            dueDateComponents: dueDateComponents,
             priority: priority,
             listName: listName,
             controller: viewController,
@@ -107,7 +113,7 @@ class MTAddReminderTool: ModelTool, @unchecked Sendable {
     private func addWithUserInteraction(
         title: String,
         notes: String,
-        dueDate: Date?,
+        dueDateComponents: DateComponents?,
         priority: Int,
         listName: String,
         controller: UIViewController,
@@ -116,7 +122,7 @@ class MTAddReminderTool: ModelTool, @unchecked Sendable {
             self.showConfirmation(
                 title: title,
                 notes: notes,
-                dueDate: dueDate,
+                dueDateComponents: dueDateComponents,
                 priority: priority,
                 listName: listName,
                 controller: controller,
@@ -129,7 +135,7 @@ class MTAddReminderTool: ModelTool, @unchecked Sendable {
     private func showConfirmation(
         title: String,
         notes: String,
-        dueDate: Date?,
+        dueDateComponents: DateComponents?,
         priority: Int,
         listName: String,
         controller: UIViewController,
@@ -139,10 +145,12 @@ class MTAddReminderTool: ModelTool, @unchecked Sendable {
         if !notes.isEmpty {
             lines.append(String(localized: "Notes: \(notes)"))
         }
-        if let dueDate {
+        if let dueDateComponents, let dueDate = Calendar.current.date(from: dueDateComponents) {
             let formatter = DateFormatter()
             formatter.dateStyle = .medium
-            formatter.timeStyle = .short
+            // A date-only due date is an all-day reminder; showing midnight
+            // would suggest a time the user never gave.
+            formatter.timeStyle = dueDateComponents.hour == nil ? .none : .short
             lines.append(String(localized: "Due: \(formatter.string(from: dueDate))"))
         }
         if priority != 0 {
@@ -154,7 +162,7 @@ class MTAddReminderTool: ModelTool, @unchecked Sendable {
 
         let alert = AlertViewController(
             title: "Add to Reminders",
-            message: lines.joined(separator: "\n"),
+            message: .init(lines.joined(separator: "\n")),
         ) { context in
             context.addAction(title: "Cancel") {
                 context.dispose {
@@ -167,11 +175,8 @@ class MTAddReminderTool: ModelTool, @unchecked Sendable {
                     let reminder = EKReminder(eventStore: eventStore)
                     reminder.title = title
                     if !notes.isEmpty { reminder.notes = notes }
-                    if let dueDate {
-                        reminder.dueDateComponents = Calendar.current.dateComponents(
-                            [.year, .month, .day, .hour, .minute],
-                            from: dueDate,
-                        )
+                    if let dueDateComponents {
+                        reminder.dueDateComponents = dueDateComponents
                     }
                     if priority != 0 { reminder.priority = priority }
                     do {
@@ -185,7 +190,11 @@ class MTAddReminderTool: ModelTool, @unchecked Sendable {
                     } catch let error as NSError where error.domain == ReminderToolsShared.errorDomain {
                         continuation.resume(throwing: error)
                     } catch {
-                        continuation.resume(throwing: ModelToolError.failure(String(localized: "Failed to add reminder: \(error.localizedDescription)")))
+                        continuation.resume(
+                            throwing: ModelToolError.failure(
+                                String(localized: "Failed to add reminder: \(error.localizedDescription)")
+                            )
+                        )
                     }
                 }
             }

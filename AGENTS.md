@@ -28,7 +28,7 @@ FlowDown is a Swift-based AI/LLM client for iOS and macOS (Catalyst) with a priv
 
 - `FlowDown/`: Application sources divided into `Application/` (entry surfaces), `Backend/` (conversations, models, storage, security), `Interface/` (UIKit), `PlatformSupport/` (macOS/Catalyst glue), `Extension/`, and `BundledResources/` (curated assets shipped with the app).
 - `FlowDown/DerivedSources/`: Generated during builds (`BuildInfo.swift`, `CloudKitConfig.swift`). Treat as generated—schemes will overwrite changes.
-- `Frameworks/`: Shared Swift packages (`ChatClientKit`, `Storage`, `Logger`, `RunestoneEditor`, `FlowDownModelExchange`) plus the `mlx-swift-lm` submodule. Each package owns its manifest and dependency graph.
+- `Frameworks/`: Shared Swift packages (`ChatClientKit`, `Storage`, `Logger`, `FlowDownModelExchange`) plus the `mlx-swift-lm` submodule. Each package owns its manifest and dependency graph.
 - `FlowDownUnitTests/`: App-level tests using Swift's `Testing` package (`@Test` entry points).
 - `Resources/`: Shared assets, localization collateral, privacy documents, and DevKit utilities. `Resources/DevKit/scripts/` holds the automation helpers—extend these rather than adding stand-alone scripts.
 - `Examples/`: Companion sample projects (e.g. `ModelExchange`); not shipped with the app.
@@ -38,12 +38,11 @@ FlowDown is a Swift-based AI/LLM client for iOS and macOS (Catalyst) with a priv
 - Run `make help` for the current command surface. The common targets:
   - Build: `make build`, `build-ios`, `build-catalyst`, `build-extension`
   - Test: `make test`, `test-unit`, `test-chat-client-kit` (set `CHAT_CLIENT_KIT_TEST_ARGUMENTS` to focus a suite), `test-online-e2e`
-  - Packages and licenses: `make package-resolve`, `package-verify`, `scan-license`
+  - Packages and licenses: `make package-resolve`, `package-update`, `scan-license`
   - Localization: `make localization-check`, `localization-stale-check`
   - Archive: `make archive`, `archive-ios`, `archive-macos`
   - Cleanup: `make clean-build`, `make clean`
 - The shared FlowDown scheme runs `git submodule update` before builds and tests; stage or commit intended gitlink changes first so the selected submodule revisions are not restored from the index.
-- Xcode 27's resolver prunes pins no built target links (currently `swift-argument-parser`, pulled in by `mlx-swift`), but Xcode Cloud's older toolchain rejects a `Package.resolved` that omits them. `Resources/DevKit/required-package-pins.json` declares them and `required_package_pins.py fix` re-adds them after every resolve. Never hand-delete those pins to shrink a diff; run `make package-verify` before committing `Package.resolved`.
 - Xcode Cloud invokes `xcodebuild` outside the Makefile; keep package plug-in validation configuration in `ci_scripts/ci_post_clone.sh` so cloud archives receive it.
 - The archive script requires a clean working tree, then bumps the build number and commits before building.
 
@@ -129,6 +128,7 @@ FlowDown is a Swift-based AI/LLM client for iOS and macOS (Catalyst) with a priv
 ### Getting the key right
 
 - `String(localized:)` accepts only a `String.LocalizationValue`, so interpolating inline is safe: `String(localized: "\(value) chances")` looks up `%lld chances`.
-- The trap is any parameter that also accepts a plain `String`. `AlertViewController` declares both a `String.LocalizationValue` init and an `@_disfavoredOverload` `String` one, and a literal argument picks the `String` overload, which turns the *finished* text into the key—so an interpolated `title:`/`message:` looks up "…browser?\n\nhttps://example.com", finds nothing, and ships English. Wrap those in `String(localized:)` yourself.
+- The trap is any parameter that also accepts a plain `String`: a literal argument picks the `String` overload, which turns the *finished* text into the key, so an interpolated literal looks up "…browser?\n\nhttps://example.com", finds nothing, and ships English. Wrap those in `String(localized:)` yourself.
+- AlertController 3 takes `String.LocalizationValue` only (`title:`, `message:`, `placeholder:`, `addAction(title:)`). Pass literals directly, interpolation included; wrap a run-time `String` (an error description, user content) with `.init(_:)`.
 - `ConfigurableKit` and `Indicator.present` take `String.LocalizationValue` directly; pass localization values to them without wrapping.
 - Prefer `String.LocalizationValue`/`LocalizedStringResource` formatting over `String(format:)`; use `String(format:)` only for compatibility.

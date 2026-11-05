@@ -90,7 +90,19 @@ extension SettingController {
             super.setupContentViews()
 
             if #available(iOS 26, macCatalyst 26, *) {
-                navigationItem.rightBarButtonItem = .init(customView: closeButton)
+                #if targetEnvironment(macCatalyst)
+                    navigationItem.rightBarButtonItem = .init(customView: closeButton)
+                #else
+                    // A system item keeps its symbol and title wherever the bar
+                    // puts it, including a vertical bar, which a custom view
+                    // never joins.
+                    navigationItem.rightBarButtonItem = .init(
+                        systemItem: .close,
+                        primaryAction: .init { [weak self] _ in
+                            self?.navigationController?.dismiss(animated: true, completion: nil)
+                        },
+                    )
+                #endif
             } else {
                 // Float the button above the scrolling content instead of
                 // scrolling away with the first row — the reader has to be
@@ -322,16 +334,6 @@ extension SettingController.SettingContent {
         @available(*, unavailable)
         required init?(coder _: NSCoder) {
             fatalError()
-        }
-    }
-}
-
-extension StackScrollController {
-    func setupConfigurableObjectViews(from objects: [ConfigurableObject]) {
-        for (idx, object) in objects.enumerated() {
-            let view = object.createView()
-            stackView.addArrangedSubviewWithMargin(view)
-            if idx < objects.count - 1 { stackView.addArrangedSubview(SeparatorView()) }
         }
     }
 }

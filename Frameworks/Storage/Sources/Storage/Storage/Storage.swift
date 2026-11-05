@@ -12,7 +12,6 @@ import ZIPFoundation
 
 public class Storage {
     private static let DeviceIDKey = "FlowdownStorageDeviceId"
-    private static let SyncFirstSetupKey = "FlowdownSyncFirstSetup"
 
     let db: Database
     let initVersion: DBVersion
@@ -26,7 +25,7 @@ public class Storage {
     package weak var syncEngine: SyncEngine?
 
     /// UploadQueue enqueue 事件回调类型
-    package typealias UploadQueueEnqueueHandler = (_ queues: [UploadQueue]) -> Void
+    package typealias UploadQueueEnqueueHandler = () -> Void
     package var uploadQueueEnqueueHandler: UploadQueueEnqueueHandler?
 
     private let existsDatabaseFile: Bool
@@ -100,6 +99,7 @@ public class Storage {
                 MigrationV4ToV5(),
                 MigrationV5ToV6(),
                 MigrationV6ToV7(),
+                MigrationV7ToV8(),
             ]
         } else {
             initVersion = .Version1
@@ -110,6 +110,7 @@ public class Storage {
                 MigrationV4ToV5(),
                 MigrationV5ToV6(),
                 MigrationV6ToV7(),
+                MigrationV7ToV8(),
             ]
         }
 
@@ -181,6 +182,7 @@ public class Storage {
             try $0.delete(fromTable: ModelContextServer.tableName)
             try $0.delete(fromTable: Memory.tableName)
             try $0.delete(fromTable: SyncMetadata.tableName)
+            try $0.delete(fromTable: SyncDeferredDeletion.tableName)
             try $0.delete(fromTable: UploadQueue.tableName)
             try $0.delete(fromTable: ChatTemplateRecord.tableName)
             try $0.delete(fromTable: ConversationSummary.tableName)
@@ -227,7 +229,7 @@ public class Storage {
 private extension Storage {
     func checkMigration() {
         for migration in migrations {
-            guard migration.validate(allowedVersions: DBVersion.allCases) else {
+            guard migration.isSingleStep else {
                 fatalError("Invalid migration: \(migration) crosses multiple versions or uses unknown version")
             }
         }
@@ -240,11 +242,6 @@ private extension Storage {
             return DBVersion(rawValue: result.intValue) ?? initVersion
         }
         return initVersion
-    }
-
-    func setVersion(_ version: DBVersion) throws {
-        let statement = StatementPragma().pragma(.userVersion).to(version.rawValue)
-        try db.exec(statement)
     }
 }
 
@@ -260,14 +257,46 @@ public extension Storage {
             do {
                 Logger.database.infoFile("clearDeletedRecords begin")
                 try db.run(transaction: {
-                    try $0.delete(fromTable: Attachment.tableName, where: Attachment.Properties.modified <= deleteAt && Attachment.Properties.removed == true)
-                    try $0.delete(fromTable: Message.tableName, where: Message.Properties.modified <= deleteAt && Message.Properties.removed == true)
-                    try $0.delete(fromTable: Conversation.tableName, where: Conversation.Properties.modified <= deleteAt && Conversation.Properties.removed == true)
-                    try $0.delete(fromTable: CloudModel.tableName, where: CloudModel.Properties.modified <= deleteAt && CloudModel.Properties.removed == true)
-                    try $0.delete(fromTable: Memory.tableName, where: Memory.Properties.modified <= deleteAt && Memory.Properties.removed == true)
-                    try $0.delete(fromTable: ModelContextServer.tableName, where: ModelContextServer.Properties.modified <= deleteAt && ModelContextServer.Properties.removed == true)
-                    try $0.delete(fromTable: ChatTemplateRecord.tableName, where: ChatTemplateRecord.Properties.modified <= deleteAt && ChatTemplateRecord.Properties.removed == true)
-                    try $0.delete(fromTable: ConversationSummary.tableName, where: ConversationSummary.Properties.modified <= deleteAt && ConversationSummary.Properties.removed == true)
+                    try $0.delete(
+                        fromTable: Attachment.tableName,
+                        where: Attachment.Properties.modified <= deleteAt
+                            && Attachment.Properties.removed == true
+                    )
+                    try $0.delete(
+                        fromTable: Message.tableName,
+                        where: Message.Properties.modified <= deleteAt
+                            && Message.Properties.removed == true
+                    )
+                    try $0.delete(
+                        fromTable: Conversation.tableName,
+                        where: Conversation.Properties.modified <= deleteAt
+                            && Conversation.Properties.removed == true
+                    )
+                    try $0.delete(
+                        fromTable: CloudModel.tableName,
+                        where: CloudModel.Properties.modified <= deleteAt
+                            && CloudModel.Properties.removed == true
+                    )
+                    try $0.delete(
+                        fromTable: Memory.tableName,
+                        where: Memory.Properties.modified <= deleteAt
+                            && Memory.Properties.removed == true
+                    )
+                    try $0.delete(
+                        fromTable: ModelContextServer.tableName,
+                        where: ModelContextServer.Properties.modified <= deleteAt
+                            && ModelContextServer.Properties.removed == true
+                    )
+                    try $0.delete(
+                        fromTable: ChatTemplateRecord.tableName,
+                        where: ChatTemplateRecord.Properties.modified <= deleteAt
+                            && ChatTemplateRecord.Properties.removed == true
+                    )
+                    try $0.delete(
+                        fromTable: ConversationSummary.tableName,
+                        where: ConversationSummary.Properties.modified <= deleteAt
+                            && ConversationSummary.Properties.removed == true
+                    )
 
                     try $0.delete(fromTable: CloudModel.tableName, where: CloudModel.Properties.objectId == "")
 
@@ -290,7 +319,9 @@ public extension Storage {
                         where:
                         UploadQueue.Properties.tableName.in(syncTables)
                             && (UploadQueue.Properties.state == UploadQueue.State.finish
-                                || (UploadQueue.Properties.state.in([UploadQueue.State.pending, UploadQueue.State.failed]) && UploadQueue.Properties.failCount >= 100)),
+                                || (UploadQueue.Properties.state
+                                    .in([UploadQueue.State.pending, UploadQueue.State.failed])
+                                    && UploadQueue.Properties.failCount >= UploadQueue.maxFailCount)),
                     )
 
                 })
@@ -323,6 +354,8 @@ public extension Storage {
                 do {
                     let mods: [CloudModel] = try db.getObjects(fromTable: CloudModel.tableName)
                     try expdb.insert(mods, intoTable: CloudModel.tableName)
+                    let servers: [ModelContextServer] = try db.getObjects(fromTable: ModelContextServer.tableName)
+                    try expdb.insert(servers, intoTable: ModelContextServer.tableName)
                     let cons: [Conversation] = try db.getObjects(fromTable: Conversation.tableName)
                     try expdb.insert(cons, intoTable: Conversation.tableName)
                     let msgs: [Message] = try db.getObjects(fromTable: Message.tableName)
@@ -380,7 +413,11 @@ public extension Storage {
 
             let importedDB = unzipTarget.appendingPathComponent("database.db")
             guard fm.fileExists(atPath: importedDB.path) else {
-                throw NSError(domain: "Storage", code: -1, userInfo: [NSLocalizedDescriptionKey: "Missing database.db in archive"])
+                throw NSError(
+                    domain: "Storage",
+                    code: -1,
+                    userInfo: [NSLocalizedDescriptionKey: "Missing database.db in archive"]
+                )
             }
 
             Logger.database.infoFile("Import the database and execute the migration.")

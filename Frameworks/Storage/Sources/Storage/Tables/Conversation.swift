@@ -3,7 +3,7 @@
 import Foundation
 import WCDBSwift
 
-public final class Conversation: Identifiable, Codable, TableNamed, DeviceOwned, TableCodable {
+public final class Conversation: Identifiable, Codable, TableNamed, TableCodable {
     public static let tableName: String = "Conversation"
 
     public var id: String {
@@ -66,7 +66,10 @@ public final class Conversation: Identifiable, Codable, TableNamed, DeviceOwned,
 
 extension Conversation: Updatable {
     @discardableResult
-    public func update<Value: Equatable>(_ keyPath: ReferenceWritableKeyPath<Conversation, Value>, to newValue: Value) -> Bool {
+    public func update<Value: Equatable>(
+        _ keyPath: ReferenceWritableKeyPath<Conversation, Value>,
+        to newValue: Value
+    ) -> Bool {
         let oldValue = self[keyPath: keyPath]
         guard oldValue != newValue else { return false }
         assign(keyPath, to: newValue)
@@ -75,11 +78,6 @@ extension Conversation: Updatable {
 
     public func assign<Value>(_ keyPath: ReferenceWritableKeyPath<Conversation, Value>, to newValue: Value) {
         self[keyPath: keyPath] = newValue
-        markModified()
-    }
-
-    package func update(_ block: (Conversation) -> Void) {
-        block(self)
         markModified()
     }
 }

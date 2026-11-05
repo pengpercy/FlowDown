@@ -63,7 +63,10 @@ extension ConversationManager {
         return createNewConversation()
     }
 
-    func createNewConversation(_ block: Storage.ConversationMakeInitDataBlock? = nil, autoSelect: Bool = false) -> Conversation {
+    func createNewConversation(
+        _ block: Storage.ConversationMakeInitDataBlock? = nil,
+        autoSelect: Bool = false
+    ) -> Conversation {
         let tempObject = sdb.conversationMake {
             $0.update(\.title, to: String(localized: "Conversation"))
             if $0.modelId?.isEmpty ?? true {
@@ -167,18 +170,21 @@ extension ConversationManager {
     }
 
     func eraseAll() {
+        // Capture the identifiers first: after the drop, scanAll no longer
+        // lists the erased conversations, so their sessions would stay cached
+        // and a running reply would keep streaming into deleted rows.
+        let erasedIdentifiers = Array(conversations.value.keys)
+        for identifier in erasedIdentifiers {
+            ConversationSessionManager.shared.cachedSession(for: identifier)?.cancelCurrentTask {}
+        }
         sdb.conversationsDrop()
         clearRichEditorObject()
         ConversationManager.shouldShowGuideMessage = true
         scanAll()
         // Clear all cached sessions after mass deletion
-        for (identifier, _) in conversations.value {
+        for identifier in erasedIdentifiers {
             ConversationSessionManager.shared.invalidateSession(for: identifier)
         }
-    }
-
-    func conversationIdentifierLookup(from messageIdentifier: Message.ID) -> Conversation.ID? {
-        sdb.conversationIdentifierLookup(identifier: messageIdentifier)
     }
 }
 

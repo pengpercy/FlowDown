@@ -57,7 +57,8 @@ class MTAddCalendarTool: ModelTool, @unchecked Sendable {
       let icsContent = json["ics_file"] as? String
     else {
       throw NSError(
-        domain: "MTAddCalendarTool", code: 400,
+        domain: "MTAddCalendarTool",
+        code: 400,
         userInfo: [
           NSLocalizedDescriptionKey: String(localized: "Invalid ICS file content")
         ],
@@ -78,11 +79,16 @@ class MTAddCalendarTool: ModelTool, @unchecked Sendable {
           guard let self, granted else {
             cont.resume(
               returning: String(
-                localized: "Calendar access denied. Please enable calendar access in Settings."))
+                localized: "Calendar access denied. Please enable calendar access in Settings."
+              )
+            )
             return
           }
           showAddEventConfirmation(
-            icsFile: icsFile, controller: controller, continuation: cont)
+            icsFile: icsFile,
+            controller: controller,
+            continuation: cont
+          )
         }
       }
     }
@@ -94,15 +100,14 @@ class MTAddCalendarTool: ModelTool, @unchecked Sendable {
     controller: UIViewController,
     continuation: CheckedContinuation<String, any Swift.Error>,
   ) {
-    // 首先解析ICS内容获取更多信息
     let eventStore = EKEventStore()
     guard let event = parseICSContent(icsFile, eventStore: eventStore) else {
       continuation.resume(
-        throwing: ModelToolError.failure(String(localized: "Failed to parse calendar event details.")))
+        throwing: ModelToolError.failure(String(localized: "Failed to parse calendar event details."))
+      )
       return
     }
 
-    // 格式化开始和结束时间
     let dateFormatter = DateFormatter()
     dateFormatter.dateStyle = .medium
     dateFormatter.timeStyle = .short
@@ -131,7 +136,8 @@ class MTAddCalendarTool: ModelTool, @unchecked Sendable {
       context.addAction(title: "Cancel") {
         context.dispose {
           continuation.resume(
-            throwing: ModelToolError.userCancelled())
+            throwing: ModelToolError.userCancelled()
+          )
         }
       }
       context.addAction(title: "Add", attribute: .accent) {
@@ -141,7 +147,10 @@ class MTAddCalendarTool: ModelTool, @unchecked Sendable {
               continuation.resume(returning: String(localized: "Event added to calendar."))
             } else {
               continuation.resume(
-                throwing: ModelToolError.failure(String(localized: "Failed to add event: \(error?.localizedDescription ?? "Unknown error")")))
+                throwing: ModelToolError.failure(
+                  String(localized: "Failed to add event: \(error?.localizedDescription ?? "Unknown error")")
+                )
+              )
             }
           }
         }
@@ -157,7 +166,8 @@ class MTAddCalendarTool: ModelTool, @unchecked Sendable {
   }
 
   private func importICSToCalendar(
-    icsContent: String, completion: @escaping (Bool, (any Swift.Error)?) -> Void
+    icsContent: String,
+    completion: @escaping (Bool, (any Swift.Error)?) -> Void
   ) {
     let eventStore = EKEventStore()
 
@@ -165,11 +175,13 @@ class MTAddCalendarTool: ModelTool, @unchecked Sendable {
       completion(
         false,
         NSError(
-          domain: "MTAddCalendarTool", code: 2,
+          domain: "MTAddCalendarTool",
+          code: 2,
           userInfo: [
             NSLocalizedDescriptionKey: String(localized: "Failed to parse ICS content")
           ],
-        ))
+        )
+      )
       return
     }
 
@@ -181,10 +193,14 @@ class MTAddCalendarTool: ModelTool, @unchecked Sendable {
     }
   }
 
-  private func parseICSContent(_ content: String, eventStore: EKEventStore) -> EKEvent? {
+  func parseICSContent(_ content: String, eventStore: EKEventStore) -> EKEvent? {
     let normalized = normalizeICSToCRLF(content)
     let parser = ICParser()
-    guard let calendar = parser.calendar(from: normalized),
+    // ICParser rejects input without a valid PRODID, which the tool schema never
+    // asks for; retry with one so a bare VEVENT still parses.
+    guard
+      let calendar = parser.calendar(from: normalized)
+        ?? parser.calendar(from: "PRODID:-//FlowDown//EN\r\n" + normalized),
       let icEvent = calendar.events.first
     else { return nil }
 
@@ -202,7 +218,12 @@ class MTAddCalendarTool: ModelTool, @unchecked Sendable {
   /// Normalizes line endings to CRLF and strips folded continuation lines
   /// so that ICParser can handle both strict and loose ICS input.
   private func normalizeICSToCRLF(_ content: String) -> String {
-    let lines = content.components(separatedBy: .newlines)
+    // Splitting CRLF on `.newlines` leaves an empty line between CR and LF, and a
+    // folded continuation would join that instead of its property.
+    let lines = content
+      .replacingOccurrences(of: "\r\n", with: "\n")
+      .replacingOccurrences(of: "\r", with: "\n")
+      .components(separatedBy: "\n")
     var result: [String] = []
     for line in lines {
       if line.first == " " || line.first == "\t", !result.isEmpty {

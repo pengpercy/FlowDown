@@ -17,6 +17,10 @@ extension SettingController.SettingContent.ModelController: UITableViewDelegate 
             return
         }
         switch itemIdentifier.type {
+        case .provider:
+            let provider = ModelManager.shared.cloudProviders.first { $0.id == itemIdentifier.identifier }
+            guard let provider else { return }
+            CloudProviderEditorController.present(from: self, provider: provider)
         case .local:
             let controller = LocalModelEditorController(identifier: itemIdentifier.identifier)
             navigationController?.pushViewController(controller, animated: true)
@@ -26,15 +30,23 @@ extension SettingController.SettingContent.ModelController: UITableViewDelegate 
         }
     }
 
-    func tableView(_: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+    func tableView(
+        _: UITableView,
+        trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath
+    ) -> UISwipeActionsConfiguration? {
         guard let itemIdentifier = dataSource.itemIdentifier(for: indexPath) else {
             return nil
         }
         let delete = UIContextualAction(
             style: .destructive,
             title: String(localized: "Delete"),
-        ) { _, _, completion in
+        ) { [weak self] _, _, completion in
             switch itemIdentifier.type {
+            case .provider:
+                // Deletion waits for confirmation; the row stays until the models are removed.
+                self?.confirmDeleteProvider(identifier: itemIdentifier.identifier)
+                completion(false)
+                return
             case .local:
                 ModelManager.shared.removeLocalModel(identifier: itemIdentifier.identifier)
             case .cloud:
@@ -46,7 +58,11 @@ extension SettingController.SettingContent.ModelController: UITableViewDelegate 
         return UISwipeActionsConfiguration(actions: [delete])
     }
 
-    func tableView(_: UITableView, contextMenuConfigurationForRowAt indexPath: IndexPath, point _: CGPoint) -> UIContextMenuConfiguration? {
+    func tableView(
+        _: UITableView,
+        contextMenuConfigurationForRowAt indexPath: IndexPath,
+        point _: CGPoint
+    ) -> UIContextMenuConfiguration? {
         guard let itemIdentifier = dataSource.itemIdentifier(for: indexPath) else {
             return nil
         }

@@ -63,7 +63,7 @@ extension CloudModelEditorController {
             name: fileName,
             pathExtension: ModelManager.flowdownModelConfigurationExtension,
             title: "Export Model",
-        ).run(anchor: navigationController?.view ?? view)
+        ).run(anchor: actionsBarItem, presenter: self)
     }
 
     @MainActor
@@ -168,26 +168,18 @@ extension CloudModelEditorController {
 
         guard !trimmed.isEmpty else { return }
 
-        guard let inferredFormat = CloudModel.ResponseFormat.inferredFormat(fromEndpoint: trimmed) else {
+        guard let inferredContract = CloudModelAPIContract.inferred(fromEndpoint: trimmed) else {
             presentEndpointFormatMismatchAlert()
             return
         }
 
-        let currentFormat = ModelManager.shared.responseFormat(for: modelId)
-        if currentFormat != inferredFormat {
-            ModelManager.shared.updateResponseFormat(for: modelId, to: inferredFormat)
+        if ModelManager.shared.apiContract(for: modelId) != inferredContract {
+            // The endpoint already carries the matching path, so this only updates the
+            // stored format and the default model list template.
+            ModelManager.shared.updateAPIContract(for: modelId, to: inferredContract)
         }
 
-        responseFormatInfoView?.configure(value: inferredFormat.localizedTitle)
-
-        if let model = ModelManager.shared.cloudModel(identifier: modelId) {
-            let defaultEndpoints = Set(CloudModel.ResponseFormat.allCases.map(\.defaultModelListEndpoint))
-            if defaultEndpoints.contains(model.model_list_endpoint) {
-                ModelManager.shared.editCloudModel(identifier: modelId) { editable in
-                    editable.update(\.model_list_endpoint, to: inferredFormat.defaultModelListEndpoint)
-                }
-            }
-        }
+        responseFormatInfoView?.configure(value: inferredContract.localizedTitle)
     }
 
     func presentEndpointFormatMismatchAlert() {
@@ -195,7 +187,7 @@ extension CloudModelEditorController {
             guard let self else { return }
             let alert = AlertViewController(
                 title: "Unable to Match Request Format",
-                message: "This data has been saved, but we could not match a request format for this endpoint. This is usually a mistake. In most cases your request should end with /v1/chat/completions.",
+                message: "This data has been saved, but we could not match an API type for this endpoint. This is usually a mistake. The endpoint should end with /v1/chat/completions, /v1/responses or /v1/messages.",
             ) { context in
                 context.addAction(title: "OK", attribute: .accent) {
                     context.dispose()
@@ -243,39 +235,33 @@ extension CloudModelEditorController {
             menuElements.append(copyAction)
         }
 
-        let deferredElement = UIDeferredMenuElement.uncached { [weak self, weak view] completion in
-            guard let model = ModelManager.shared.cloudModel(identifier: modelId) else {
-                completion([])
-                return
-            }
-
-            ModelManager.shared.fetchModelList(identifier: model.id) { [weak self, weak view] list in
-                guard let self else {
-                    completion([])
-                    return
+        // Built from the loader's cached list: completing a deferred element after the
+        // network returns crashes Catalyst once the menu has closed (#221, #243).
+        let serverChildren: [UIMenuElement]
+        switch serverModelListLoader.load(.init(model: model)) {
+        case .loading:
+            serverChildren = [UIAction(
+                title: String(localized: "Loading..."),
+                attributes: .disabled,
+            ) { _ in }]
+        case let .loaded(list) where list.isEmpty:
+            serverChildren = [UIAction(
+                title: String(localized: "(None)"),
+                attributes: .disabled,
+            ) { _ in }]
+        case let .loaded(list):
+            serverChildren = buildModelSelectionMenu(from: list) { [weak view] selection in
+                ModelManager.shared.editCloudModel(identifier: modelId) {
+                    $0.update(\.model_identifier, to: selection)
                 }
-                guard !list.isEmpty else {
-                    completion([UIAction(
-                        title: String(localized: "(None)"),
-                        attributes: .disabled,
-                    ) { _ in }])
-                    return
-                }
-
-                let menuElements = buildModelSelectionMenu(from: list) { selection in
-                    ModelManager.shared.editCloudModel(identifier: model.id) {
-                        $0.update(\.model_identifier, to: selection)
-                    }
-                    view?.configure(value: selection)
-                }
-                completion(menuElements)
+                view?.configure(value: selection)
             }
         }
 
         menuElements.append(UIMenu(
             title: String(localized: "Select from Server"),
             image: UIImage(systemName: "icloud.and.arrow.down"),
-            children: [deferredElement],
+            children: serverChildren,
         ))
 
         return menuElements

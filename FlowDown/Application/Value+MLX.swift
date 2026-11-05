@@ -13,7 +13,7 @@ import UIKit
 
 extension MLX.GPU {
     static let storageKey = "wiki.qaq.MLX.GPU.cacheSize"
-    static var cancellables = Set<AnyCancellable>()
+    private static var cancellables = Set<AnyCancellable>()
     static let isSupportedKey = "Device.isMlxSupported"
     static var isSupported: Bool {
         ConfigurableKit.value(forKey: isSupportedKey) ?? false
@@ -64,15 +64,14 @@ extension MLX.GPU {
         #endif
     }
 
+    private static var configuredCacheSizeLimit: CacheSizeLimit {
+        CacheSizeLimit(rawValue: ConfigurableKit.value(forKey: storageKey) ?? "") ?? .notAllowed
+    }
+
     static func onApplicationResignActivate() {
         guard isSupported else { return }
-        let value: String = ConfigurableKit.value(forKey: storageKey) ?? ""
-        let limit = CacheSizeLimit(rawValue: value) ?? .notAllowed
-        switch limit {
-        case .notAllowed:
-            MLX.Memory.cacheLimit = 0
-            MLX.Memory.clearCache()
-        case .allowedInForeground:
+        switch configuredCacheSizeLimit {
+        case .notAllowed, .allowedInForeground:
             MLX.Memory.cacheLimit = 0
             MLX.Memory.clearCache()
         #if targetEnvironment(macCatalyst)
@@ -84,9 +83,7 @@ extension MLX.GPU {
 
     static func onApplicationBecomeActivate() {
         guard isSupported else { return }
-        let value: String = ConfigurableKit.value(forKey: storageKey) ?? ""
-        let limit = CacheSizeLimit(rawValue: value) ?? .notAllowed
-        switch limit {
+        switch configuredCacheSizeLimit {
         case .notAllowed:
             MLX.Memory.cacheLimit = 0
             MLX.Memory.clearCache()

@@ -17,10 +17,9 @@ nonisolated(unsafe) extension ScrubberConfiguration {
     static let bingEnabledKey = "app.scrubber.engine.bing.enabled"
 
     static let limitKey = "app.scrubber.engine.limit"
+    private static let defaultLimit = 20
 
     private static var cancellables: Set<AnyCancellable> = []
-
-    static let engineConfigChanged: PassthroughSubject<Void, Never> = .init()
 
     nonisolated(unsafe) static let googleEnabledConfigurableObject: ConfigurableObject = .init(
         icon: "sparkle.magnifyingglass",
@@ -60,7 +59,7 @@ nonisolated(unsafe) extension ScrubberConfiguration {
         title: "Search Limit",
         explain: "The maximum number of search results to fetch.",
         key: limitKey,
-        defaultValue: 20,
+        defaultValue: defaultLimit,
         annotation: .menu { [
             .init(title: "5 Pages", rawValue: 5),
             .init(title: "10 Pages", rawValue: 10),
@@ -71,50 +70,40 @@ nonisolated(unsafe) extension ScrubberConfiguration {
     )
 
     static var limitConfigurableObjectValue: Int {
-        ConfigurableKit.value(forKey: limitKey) ?? 20
+        ConfigurableKit.value(forKey: limitKey) ?? defaultLimit
     }
 
     @MainActor
     static func subscribeToConfigurableItem() {
         assert(cancellables.isEmpty)
 
-        let publisher: AnyPublisher<(Bool, Bool, Bool, Bool), Never> = Publishers.CombineLatest4(
+        Publishers.CombineLatest4(
             ConfigurableKit.publisher(forKey: googleEnabledKey, type: Bool.self)
-                .compactMap { $0 ?? true }
-                .eraseToAnyPublisher(),
+                .map { $0 ?? true },
             ConfigurableKit.publisher(forKey: duckduckgoEnabledKey, type: Bool.self)
-                .compactMap { $0 ?? true }
-                .eraseToAnyPublisher(),
+                .map { $0 ?? true },
             ConfigurableKit.publisher(forKey: yahooEnabledKey, type: Bool.self)
-                .compactMap { $0 ?? true }
-                .eraseToAnyPublisher(),
+                .map { $0 ?? true },
             ConfigurableKit.publisher(forKey: bingEnabledKey, type: Bool.self)
-                .compactMap { $0 ?? true }
-                .eraseToAnyPublisher(),
+                .map { $0 ?? true },
         )
-        .eraseToAnyPublisher()
-
-        let disabledEnginesPublisher = publisher
-            .map { g, d, y, b in
-                var disabledEnginesBuilder: Set<ScrubEngine> = []
-                if !g { disabledEnginesBuilder.insert(.google) }
-                if !d { disabledEnginesBuilder.insert(.duckduckgo) }
-                if !y { disabledEnginesBuilder.insert(.yahoo) }
-                if !b { disabledEnginesBuilder.insert(.bing) }
-                return disabledEnginesBuilder
+        .map { g, d, y, b in
+            var disabledEnginesBuilder: Set<ScrubEngine> = []
+            if !g { disabledEnginesBuilder.insert(.google) }
+            if !d { disabledEnginesBuilder.insert(.duckduckgo) }
+            if !y { disabledEnginesBuilder.insert(.yahoo) }
+            if !b { disabledEnginesBuilder.insert(.bing) }
+            return disabledEnginesBuilder
+        }
+        .ensureMainThread()
+        .sink { input in
+            if input.count == ScrubEngine.allCases.count {
+                disabledEngines = []
+                ConfigurableKit.set(value: true, forKey: googleEnabledKey)
+            } else {
+                disabledEngines = input
             }
-            .eraseToAnyPublisher()
-
-        disabledEnginesPublisher
-            .ensureMainThread()
-            .sink { input in
-                if input.count == ScrubEngine.allCases.count {
-                    disabledEngines = []
-                    ConfigurableKit.set(value: true, forKey: googleEnabledKey)
-                } else {
-                    disabledEngines = input
-                }
-            }
-            .store(in: &cancellables)
+        }
+        .store(in: &cancellables)
     }
 }

@@ -10,36 +10,31 @@ import UIKit
 class KeyboardNavigationSearchBar: UISearchBar {
     weak var keyboardNavigationDelegate: KeyboardNavigationDelegate?
 
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        setupKeyboardHandling()
+    /// The arrows have to win over the search field, which is the first
+    /// responder and would otherwise spend them on moving the caret before
+    /// they ever reach the bar. Return is left to the field, where
+    /// `searchBarSearchButtonClicked` already opens the highlighted result.
+    override var keyCommands: [UIKeyCommand]? {
+        let upArrow = UIKeyCommand(
+            input: UIKeyCommand.inputUpArrow,
+            modifierFlags: [],
+            action: #selector(handleKeyboardNavigationUpArrow),
+        )
+        upArrow.wantsPriorityOverSystemBehavior = true
+        let downArrow = UIKeyCommand(
+            input: UIKeyCommand.inputDownArrow,
+            modifierFlags: [],
+            action: #selector(handleKeyboardNavigationDownArrow),
+        )
+        downArrow.wantsPriorityOverSystemBehavior = true
+        return (super.keyCommands ?? []) + [upArrow, downArrow]
     }
 
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
-        setupKeyboardHandling()
+    @objc private func handleKeyboardNavigationUpArrow() {
+        keyboardNavigationDelegate?.didPressUpArrow()
     }
 
-    private func setupKeyboardHandling() {}
-
-    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-        for press in presses {
-            guard let key = press.key else { continue }
-
-            switch key.keyCode {
-            case .keyboardReturnOrEnter:
-                keyboardNavigationDelegate?.didPressEnter()
-                return
-            case .keyboardUpArrow:
-                keyboardNavigationDelegate?.didPressUpArrow()
-                return
-            case .keyboardDownArrow:
-                keyboardNavigationDelegate?.didPressDownArrow()
-                return
-            default:
-                break
-            }
-        }
-        super.pressesBegan(presses, with: event)
+    @objc private func handleKeyboardNavigationDownArrow() {
+        keyboardNavigationDelegate?.didPressDownArrow()
     }
 }

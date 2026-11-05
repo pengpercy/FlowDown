@@ -23,8 +23,9 @@ extension MessageListView {
     /// the theme actually changes.
     final class MarkdownSizingViewPool {
         private struct Entry {
-            let view: MarkdownTextView
+            let view: MarkdownStreamView
             let contentHash: Int
+            let isStreaming: Bool
             let theme: MarkdownTheme
         }
 
@@ -40,12 +41,13 @@ extension MessageListView {
         func view(
             for message: MessageRepresentation,
             theme: MarkdownTheme,
-            expandedCodeBlocks: Set<Int>,
+            expandedCodeBlocks: Set<Int> = [],
             content: () -> MarkdownContent,
-        ) -> MarkdownTextView {
+        ) -> MarkdownStreamView {
             let contentHash = message.content.hashValue
             if let entry = entries[message.id],
                entry.contentHash == contentHash,
+               entry.isStreaming == message.isStreaming,
                entry.theme == theme
             {
                 entry.view.expandedCodeBlocks = expandedCodeBlocks
@@ -53,17 +55,22 @@ extension MessageListView {
                 return entry.view
             }
 
-            let view = entries[message.id]?.view ?? MarkdownTextView()
+            // The same view class the row draws with, so the two lay out alike.
+            // Out of a window it never animates.
+            let view = entries[message.id]?.view ?? ChatMarkdownView()
+            // Assigning the theme reinstalls the current content, so it goes
+            // first while the view is still empty or already stale.
+            view.theme = theme
             // The expansion state goes in before the content: the height a
-            // fence reserves is decided while the content is built, so a view
-            // that receives the state afterwards measures one build short.
+            // fence reserves is decided while the content is built.
             view.expandedCodeBlocks = expandedCodeBlocks
-            // Theme assignment alone rebuilds whatever the view already holds.
-            // A sizing pass always has new content in the same breath, so both
-            // land in one build — otherwise a fence can be measured against an
-            // empty document and the on-screen row is given a blank height.
-            view.setContentImmediately(content(), theme: theme)
-            entries[message.id] = .init(view: view, contentHash: contentHash, theme: theme)
+            view.setContentImmediately(content())
+            entries[message.id] = .init(
+                view: view,
+                contentHash: contentHash,
+                isStreaming: message.isStreaming,
+                theme: theme,
+            )
             touch(message.id)
             evictIfNeeded()
             return view

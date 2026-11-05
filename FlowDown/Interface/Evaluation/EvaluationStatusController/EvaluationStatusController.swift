@@ -75,6 +75,7 @@ final class EvaluationStatusController: UIViewController {
             target: self,
             action: #selector(shareTapped),
         )
+        item.title = String(localized: "Share")
         item.accessibilityLabel = String(localized: "Share")
         return item
     }()
@@ -86,6 +87,9 @@ final class EvaluationStatusController: UIViewController {
             target: self,
             action: #selector(backTapped),
         )
+        // The system Back cannot ask before leaving a running evaluation, so
+        // this stands in for it with the same symbol and title.
+        item.title = String(localized: "Back")
         item.accessibilityLabel = String(localized: "Back")
         return item
     }()
@@ -99,6 +103,7 @@ final class EvaluationStatusController: UIViewController {
             completion(createFilterMenuItems())
         }
         let item = UIBarButtonItem(
+            title: String(localized: "Filter Options"),
             image: .init(systemName: "line.3.horizontal.decrease.circle"),
             menu: UIMenu(title: String(localized: "Filter Options"), children: [deferredMenu]),
         )
@@ -155,6 +160,9 @@ final class EvaluationStatusController: UIViewController {
     }
 
     private func updateInteractivePopGestureState() {
+        // Swiping the sheet down would skip the exit confirmation and leave the run going.
+        navigationController?.isModalInPresentation = session.isRunning
+
         guard let gesture = navigationController?.interactivePopGestureRecognizer else { return }
 
         if interactivePopGesturePreviousEnabled == nil {
@@ -180,14 +188,14 @@ final class EvaluationStatusController: UIViewController {
 
     private func presentExitWhileRunningAlert() {
         let alert = AlertViewController(
-            title: String(localized: "Exit Evaluation"),
-            message: String(localized: "Exiting now will interrupt the running evaluation."),
+            title: "Exit Evaluation",
+            message: "Exiting now will interrupt the running evaluation.",
         ) { [weak self] context in
             context.allowSimpleDispose()
-            context.addAction(title: String(localized: "Cancel")) {
+            context.addAction(title: "Cancel") {
                 context.dispose()
             }
-            context.addAction(title: String(localized: "Exit"), attribute: .accent) {
+            context.addAction(title: "Exit", attribute: .accent) {
                 context.dispose { self?.exitScreen() }
             }
         }
@@ -248,7 +256,7 @@ final class EvaluationStatusController: UIViewController {
             name: exportName,
             pathExtension: "fder",
         )
-        exporter.run(anchor: view, mode: .file)
+        exporter.run(anchor: shareBarItem, presenter: self, mode: .file)
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -256,8 +264,10 @@ final class EvaluationStatusController: UIViewController {
 
         restoreInteractivePopGestureStateIfNeeded()
 
-        guard isMovingFromParent || isBeingDismissed else { return }
+        // A presented sheet marks the navigation controller as being dismissed, not its children.
+        guard isMovingFromParent || isBeingDismissed || navigationController?.isBeingDismissed == true else { return }
         session.stopAndDispose(save: true)
+        navigationController?.isModalInPresentation = false
     }
 
     private func updateTitle() {
@@ -285,7 +295,7 @@ final class EvaluationStatusController: UIViewController {
 
     @objc func sessionDidUpdate() {
         if Thread.isMainThread {
-            statusView.applySessionUpdate(animated: false)
+            statusView.applySessionUpdate()
             updateTitle()
             updateInteractivePopGestureState()
         } else {
@@ -308,6 +318,6 @@ final class EvaluationStatusController: UIViewController {
             navigationController?.pushViewController(detailVC, animated: true)
         }
 
-        statusView.applySessionUpdate(animated: false)
+        statusView.applySessionUpdate()
     }
 }

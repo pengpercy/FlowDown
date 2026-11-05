@@ -178,34 +178,19 @@ private func createUploadQueueTable(db: Database) throws {
 protocol DBMigration {
     var fromVersion: DBVersion { get }
     var toVersion: DBVersion { get }
-    var requiresDataMigration: Bool { get }
     func migrate(db: Database) throws
 }
 
 extension DBMigration {
     /// 检查迁移是否合法：不允许跨多个版本
-    func validate(allowedVersions: [DBVersion]) -> Bool {
-        // 1. fromVersion 和 toVersion 都必须在允许的版本范围内
-        guard allowedVersions.contains(fromVersion),
-              allowedVersions.contains(toVersion)
-        else {
-            return false
-        }
-
-        // 2. 只允许跨单个版本
-        if let fromIndex = allowedVersions.firstIndex(of: fromVersion),
-           let toIndex = allowedVersions.firstIndex(of: toVersion)
-        {
-            return (toIndex - fromIndex) == 1
-        }
-        return false
+    var isSingleStep: Bool {
+        toVersion.rawValue - fromVersion.rawValue == 1
     }
 }
 
 struct MigrationV0ToV1: DBMigration {
     let fromVersion: DBVersion = .Version0
     let toVersion: DBVersion = .Version1
-    let requiresDataMigration: Bool = false
 
     func migrate(db: Database) throws {
         let start = Date.now
@@ -256,8 +241,8 @@ struct MigrationV1ToV2: DBMigration {
     }
 
     private func performSchemaMigration(db: Database) throws {
-        try createAttachmentTable(db: db)
-        try createMessageTable(db: db)
+        try db.create(table: Attachment.tableName, of: AttachmentTableSchema.self)
+        try db.create(table: Message.tableName, of: MessageTableSchema.self)
         try db.create(table: Conversation.tableName, of: Conversation.self)
 
         try db.create(table: CloudModel.tableName, of: CloudModel.self)
@@ -266,14 +251,6 @@ struct MigrationV1ToV2: DBMigration {
 
         try db.create(table: SyncMetadata.tableName, of: SyncMetadata.self)
         try createUploadQueueTable(db: db)
-    }
-
-    private func createAttachmentTable(db: Database) throws {
-        try db.create(table: Attachment.tableName, of: AttachmentTableSchema.self)
-    }
-
-    private func createMessageTable(db: Database) throws {
-        try db.create(table: Message.tableName, of: MessageTableSchema.self)
     }
 
     private func performDataMigration(db: Database) throws {
@@ -336,7 +313,11 @@ struct MigrationV1ToV2: DBMigration {
         // 迁移消息
         if let oldTableName = tableExists[MessageV1.tableName] {
             try db.run(transaction: { handle in
-                messagesMap = try migrateMessages(handle: handle, conversationsMap: conversationsMap, oldTableName: oldTableName)
+                messagesMap = try migrateMessages(
+                    handle: handle,
+                    conversationsMap: conversationsMap,
+                    oldTableName: oldTableName
+                )
                 guard !messagesMap.isEmpty else {
                     return
                 }
@@ -347,7 +328,11 @@ struct MigrationV1ToV2: DBMigration {
         // 迁移附件
         if let oldTableName = tableExists[AttachmentV1.tableName] {
             try db.run(transaction: { handle in
-                let attachments = try migrateAttachments(handle: handle, messagesMap: messagesMap, oldTableName: oldTableName)
+                let attachments = try migrateAttachments(
+                    handle: handle,
+                    messagesMap: messagesMap,
+                    oldTableName: oldTableName
+                )
                 guard !attachments.isEmpty else {
                     return
                 }
@@ -453,7 +438,10 @@ struct MigrationV1ToV2: DBMigration {
         return migrateMemorys.count
     }
 
-    private func migrateConversations(handle: Handle, oldTableName: String) throws -> [ConversationV1.ID: Conversation] {
+    private func migrateConversations(
+        handle: Handle,
+        oldTableName: String
+    ) throws -> [ConversationV1.ID: Conversation] {
         let conversations: [ConversationV1] = try handle.getObjects(fromTable: oldTableName)
         guard !conversations.isEmpty else {
             return [:]
@@ -478,7 +466,11 @@ struct MigrationV1ToV2: DBMigration {
         return migrateConversationsMap
     }
 
-    private func migrateMessages(handle: Handle, conversationsMap: [ConversationV1.ID: Conversation], oldTableName: String) throws -> [MessageV1.ID: Message] {
+    private func migrateMessages(
+        handle: Handle,
+        conversationsMap: [ConversationV1.ID: Conversation],
+        oldTableName: String
+    ) throws -> [MessageV1.ID: Message] {
         let messages: [MessageV1] = try handle.getObjects(fromTable: oldTableName)
 
         guard !messages.isEmpty else {
@@ -512,7 +504,11 @@ struct MigrationV1ToV2: DBMigration {
         return migrateMessagessMap
     }
 
-    private func migrateAttachments(handle: Handle, messagesMap: [MessageV1.ID: Message], oldTableName: String) throws -> [Attachment] {
+    private func migrateAttachments(
+        handle: Handle,
+        messagesMap: [MessageV1.ID: Message],
+        oldTableName: String
+    ) throws -> [Attachment] {
         let attachments: [AttachmentV1] = try handle.getObjects(fromTable: oldTableName)
         guard !attachments.isEmpty else {
             return []
@@ -581,7 +577,11 @@ struct MigrationV1ToV2: DBMigration {
         Logger.database.infoFile("[*] migrate version \(fromVersion.rawValue) -> \(toVersion.rawValue) initializeUploadQueue end elapsed \(Int(elapsed))ms")
     }
 
-    private func initializeMigrationUploadQueue<T: Syncable & SyncQueryable>(table _: T.Type, db: Database, startId: Int64) throws -> Int64 {
+    private func initializeMigrationUploadQueue<T: Syncable & SyncQueryable>(
+        table _: T.Type,
+        db: Database,
+        startId: Int64
+    ) throws -> Int64 {
         let batchSize = 500
         var lastObjectId: String?
         var lastCreation: Date?
@@ -591,14 +591,17 @@ struct MigrationV1ToV2: DBMigration {
         while true {
             var finish = false
             try db.run(transaction: { handle in
+                // Page by (creation, objectId) so rows sharing a creation time are
+                // each read exactly once, however many of them there are.
                 let objects: [T] = if let lastObjectId, let lastCreation {
                     try handle.getObjects(
                         fromTable: T.tableName,
                         where:
-                        T.SyncQuery.creation >= lastCreation
-                            && T.SyncQuery.objectId != lastObjectId,
+                        T.SyncQuery.creation > lastCreation
+                            || (T.SyncQuery.creation == lastCreation && T.SyncQuery.objectId > lastObjectId),
                         orderBy: [
                             T.SyncQuery.creation.order(.ascending),
+                            T.SyncQuery.objectId.order(.ascending),
                         ],
                         limit: batchSize,
                     )
@@ -607,6 +610,7 @@ struct MigrationV1ToV2: DBMigration {
                         fromTable: T.tableName,
                         orderBy: [
                             T.SyncQuery.creation.order(.ascending),
+                            T.SyncQuery.objectId.order(.ascending),
                         ],
                         limit: batchSize,
                     )
@@ -649,7 +653,6 @@ struct MigrationV1ToV2: DBMigration {
 struct MigrationV2ToV3: DBMigration {
     let fromVersion: DBVersion = .Version2
     let toVersion: DBVersion = .Version3
-    let requiresDataMigration: Bool = false
 
     func migrate(db: Database) throws {
         let start = Date.now
@@ -670,7 +673,6 @@ struct MigrationV2ToV3: DBMigration {
 struct MigrationV3ToV4: DBMigration {
     let fromVersion: DBVersion = .Version3
     let toVersion: DBVersion = .Version4
-    let requiresDataMigration: Bool = false
 
     func migrate(db: Database) throws {
         let start = Date.now
@@ -689,7 +691,6 @@ struct MigrationV3ToV4: DBMigration {
 struct MigrationV4ToV5: DBMigration {
     let fromVersion: DBVersion = .Version4
     let toVersion: DBVersion = .Version5
-    let requiresDataMigration: Bool = false
 
     func migrate(db: Database) throws {
         let start = Date.now
@@ -707,7 +708,6 @@ struct MigrationV4ToV5: DBMigration {
 struct MigrationV5ToV6: DBMigration {
     let fromVersion: DBVersion = .Version5
     let toVersion: DBVersion = .Version6
-    let requiresDataMigration: Bool = false
 
     func migrate(db: Database) throws {
         let start = Date.now
@@ -725,11 +725,27 @@ struct MigrationV5ToV6: DBMigration {
 struct MigrationV6ToV7: DBMigration {
     let fromVersion: DBVersion = .Version6
     let toVersion: DBVersion = .Version7
-    let requiresDataMigration: Bool = false
 
     func migrate(db: Database) throws {
         try db.create(table: ConversationFolder.tableName, of: ConversationFolder.self)
         try db.create(table: ConversationFolderMembership.tableName, of: ConversationFolderMembership.self)
         try db.exec(StatementPragma().pragma(.userVersion).to(toVersion.rawValue))
+    }
+}
+
+struct MigrationV7ToV8: DBMigration {
+    let fromVersion: DBVersion = .Version7
+    let toVersion: DBVersion = .Version8
+
+    func migrate(db: Database) throws {
+        let start = Date.now
+        Logger.database.infoFile("[*] migrate version \(fromVersion.rawValue) -> \(toVersion.rawValue) begin")
+
+        try db.create(table: SyncDeferredDeletion.tableName, of: SyncDeferredDeletion.self)
+
+        try db.exec(StatementPragma().pragma(.userVersion).to(toVersion.rawValue))
+
+        let elapsed = Date.now.timeIntervalSince(start) * 1000.0
+        Logger.database.infoFile("[*] migrate version \(fromVersion.rawValue) -> \(toVersion.rawValue) end elapsed \(Int(elapsed))ms")
     }
 }

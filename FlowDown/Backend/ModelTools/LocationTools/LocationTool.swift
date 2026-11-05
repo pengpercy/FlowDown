@@ -19,6 +19,7 @@ class MTLocationTool: ModelTool, @unchecked Sendable {
     private var locationCompletion: ((String, Bool) -> Void)?
     private var loadingIndicator: AlertProgressIndicatorViewController?
     private var currentLocale: Locale?
+    private var isGeocoding = false
 
     override var interfaceName: String {
         String(localized: "Current Location")
@@ -58,10 +59,10 @@ class MTLocationTool: ModelTool, @unchecked Sendable {
     override func execute(with input: String, anchorTo view: UIView) async throws -> String {
         var locale: Locale = .current
 
-        // 解析输入参数
         if !input.isEmpty,
            let json = decodeArguments(input),
-           let localeIdentifier = json["locale"] as? String
+           let localeIdentifier = json["locale"] as? String,
+           !localeIdentifier.isEmpty
         {
             locale = Locale(identifier: localeIdentifier)
         }
@@ -69,7 +70,8 @@ class MTLocationTool: ModelTool, @unchecked Sendable {
         let viewController = try await anchorController(for: view)
 
         return try await requestLocationWithUserInteraction(
-            controller: viewController, locale: locale,
+            controller: viewController,
+            locale: locale,
         )
     }
 
@@ -82,7 +84,8 @@ class MTLocationTool: ModelTool, @unchecked Sendable {
                     continuation.resume(returning: result)
                 } else {
                     continuation.resume(throwing: NSError(
-                        domain: "Tool", code: -1,
+                        domain: "Tool",
+                        code: -1,
                         userInfo: [
                             NSLocalizedDescriptionKey: result,
                         ],
@@ -93,7 +96,9 @@ class MTLocationTool: ModelTool, @unchecked Sendable {
     }
 
     private func getLocationAndAddress(
-        controller: UIViewController, locale: Locale, completion: @escaping (String, Bool) -> Void,
+        controller: UIViewController,
+        locale: Locale,
+        completion: @escaping (String, Bool) -> Void,
     ) {
         var isCompletionCalled = false
         let wrappedCompletion: (String, Bool) -> Void = { text, success in
@@ -108,14 +113,14 @@ class MTLocationTool: ModelTool, @unchecked Sendable {
 
         controller.present(indicator, animated: true)
 
-        // 创建位置管理器
         locationManager = CLLocationManager()
-        locationManager?.delegate = self // 设置代理
-        locationManager?.desiredAccuracy = kCLLocationAccuracyHundredMeters // 设置精度
+        locationManager?.delegate = self
+        locationManager?.desiredAccuracy = kCLLocationAccuracyHundredMeters
 
         locationCompletion = wrappedCompletion
         loadingIndicator = indicator
         currentLocale = locale
+        isGeocoding = false
 
         Task.detached { [weak self] in
             guard let self else { return }
@@ -139,7 +144,8 @@ class MTLocationTool: ModelTool, @unchecked Sendable {
                                 String(
                                     localized:
                                     "Location access is not available. Please check your device settings.",
-                                ), false,
+                                ),
+                                false,
                             )
                         }
                         return
@@ -150,7 +156,8 @@ class MTLocationTool: ModelTool, @unchecked Sendable {
                     @unknown default:
                         indicator.dismiss(animated: true) {
                             wrappedCompletion(
-                                String(localized: "Unknown authorization status for location services."), false,
+                                String(localized: "Unknown authorization status for location services."),
+                                false,
                             )
                         }
                         return
@@ -179,8 +186,13 @@ class MTLocationTool: ModelTool, @unchecked Sendable {
             return
         }
 
+        // Both the authorization callback and the explicit check land here;
+        // a second request on the same geocoder would cancel the first.
+        guard !isGeocoding else { return }
+
         // 获取当前位置
         if let location = locationManager?.location {
+            isGeocoding = true
             // 地理编码
             geocoder.reverseGeocodeLocation(location, preferredLocale: locale) {
                 placemarks, error in
@@ -190,7 +202,8 @@ class MTLocationTool: ModelTool, @unchecked Sendable {
                             String(
                                 localized:
                                 "Error getting location details: \(error.localizedDescription)",
-                            ), false,
+                            ),
+                            false,
                         )
                         return
                     }
@@ -200,10 +213,8 @@ class MTLocationTool: ModelTool, @unchecked Sendable {
                         return
                     }
 
-                    // 格式化位置信息
                     var addressComponents = [String]()
 
-                    // 坐标
                     let latitude = location.coordinate.latitude
                     let longitude = location.coordinate.longitude
                     addressComponents.append(
@@ -267,9 +278,10 @@ class MTLocationTool: ModelTool, @unchecked Sendable {
                 }
             }
         } else {
-            indicator.dismiss(animated: true) {
-                completion(String(localized: "Could not determine current location."), false)
-            }
+            // `location` only holds a cached fix, which is nil until the app
+            // has received one; ask for a fresh fix and continue from the
+            // delegate once it arrives.
+            locationManager?.requestLocation()
         }
     }
 }
@@ -291,9 +303,22 @@ extension MTLocationTool: CLLocationManagerDelegate {
         @unknown default:
             loadingIndicator?.dismiss(animated: true) {
                 self.locationCompletion?(
-                    String(localized: "Unknown authorization status for location services."), false,
+                    String(localized: "Unknown authorization status for location services."),
+                    false,
                 )
             }
+        }
+    }
+
+    func locationManager(_: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard !locations.isEmpty else { return }
+        performLocationLookup()
+    }
+
+    func locationManager(_: CLLocationManager, didFailWithError _: Error) {
+        guard !isGeocoding else { return }
+        loadingIndicator?.dismiss(animated: true) {
+            self.locationCompletion?(String(localized: "Could not determine current location."), false)
         }
     }
 }

@@ -8,7 +8,7 @@
 import Foundation
 import WCDBSwift
 
-public final class Attachment: Identifiable, Codable, TableNamed, DeviceOwned, TableCodable {
+public final class Attachment: Identifiable, Codable, TableNamed, TableCodable {
     public static let tableName: String = "Attachment"
 
     public var id: String {
@@ -82,7 +82,10 @@ public final class Attachment: Identifiable, Codable, TableNamed, DeviceOwned, T
 
 extension Attachment: Updatable {
     @discardableResult
-    public func update<Value: Equatable>(_ keyPath: ReferenceWritableKeyPath<Attachment, Value>, to newValue: Value) -> Bool {
+    public func update<Value: Equatable>(
+        _ keyPath: ReferenceWritableKeyPath<Attachment, Value>,
+        to newValue: Value
+    ) -> Bool {
         let oldValue = self[keyPath: keyPath]
         guard oldValue != newValue else { return false }
         assign(keyPath, to: newValue)
@@ -91,11 +94,6 @@ extension Attachment: Updatable {
 
     public func assign<Value>(_ keyPath: ReferenceWritableKeyPath<Attachment, Value>, to newValue: Value) {
         self[keyPath: keyPath] = newValue
-        markModified()
-    }
-
-    package func update(_ block: (Attachment) -> Void) {
-        block(self)
         markModified()
     }
 }

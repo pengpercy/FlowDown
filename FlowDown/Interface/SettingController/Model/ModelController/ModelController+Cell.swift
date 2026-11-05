@@ -8,6 +8,18 @@
 import ConfigurableKit
 import UIKit
 
+extension CloudProvider {
+    /// Secondary line for the provider row in model management.
+    var listDescriptions: [String] {
+        var items = [contract.localizedTitle]
+        items.append(String(localized: "\(modelIDs.count) models"))
+        if let host = URL(string: endpoint)?.host, host != displayName {
+            items.append(host)
+        }
+        return items
+    }
+}
+
 extension SettingController.SettingContent.ModelController {
     class ModelCell: UITableViewCell {
         let content = ConfigurablePageView { fatalError() }
@@ -32,11 +44,13 @@ extension SettingController.SettingContent.ModelController {
         }
 
         enum ModelType {
+            case provider
             case local
             case cloud
 
             var image: UIImage {
                 switch self {
+                case .provider: UIImage(systemName: "server.rack") ?? .modelCloud
                 case .local: .modelLocal
                 case .cloud: .modelCloud
                 }
@@ -55,35 +69,6 @@ extension SettingController.SettingContent.ModelController {
             preservesSuperviewLayoutMargins = false
             separatorInset = UIEdgeInsets.zero
             layoutMargins = UIEdgeInsets.zero
-        }
-    }
-}
-
-extension SettingController.SettingContent.ModelController {
-    class HeaderCell: UITableViewCell {
-        let vfx = UIVisualEffectView(effect: UIBlurEffect(style: .regular))
-        let titleLabel = UILabel()
-        init() {
-            super.init(style: .default, reuseIdentifier: nil)
-            backgroundColor = .clear
-            selectionStyle = .none
-            vfx.contentView.addSubview(titleLabel)
-            contentView.addSubview(vfx)
-            vfx.snp.makeConstraints { make in
-                make.edges.equalToSuperview()
-            }
-            titleLabel.snp.makeConstraints { make in
-                make.center.equalToSuperview()
-            }
-            titleLabel.font = .footnote
-            titleLabel.textColor = .secondaryLabel
-            titleLabel.numberOfLines = 1
-            titleLabel.textAlignment = .left
-        }
-
-        @available(*, unavailable)
-        required init?(coder _: NSCoder) {
-            fatalError()
         }
     }
 }

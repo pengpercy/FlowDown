@@ -13,8 +13,8 @@ let package = Package(
         .library(name: "Storage", type: .dynamic, targets: ["Storage"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/pengpercy/MarkdownView", exact: "4.3.2-flowdown.11"),
-        .package(url: "https://github.com/Lakr233/wcdb-spm-prebuilt", from: "2.1.15"),
+        .package(url: "https://github.com/pengpercy/MarkdownView", exact: "4.8.5-flowdown.1"),
+        .package(url: "https://github.com/Lakr233/wcdb.xcframework", from: "2.1.15"),
         .package(url: "https://github.com/apple/swift-collections", from: "1.4.1"),
         .package(url: "https://github.com/weichsel/ZIPFoundation", from: "0.9.20"),
         .package(path: "../Logger"),
@@ -22,7 +22,7 @@ let package = Package(
     targets: [
         .target(name: "Storage", dependencies: [
             .product(name: "MarkdownParser", package: "MarkdownView"),
-            .product(name: "WCDBSwift", package: "wcdb-spm-prebuilt"),
+            .product(name: "WCDBSwift", package: "wcdb.xcframework"),
             .product(name: "OrderedCollections", package: "swift-collections"),
             .product(name: "ZIPFoundation", package: "ZIPFoundation"),
             .product(name: "Logger", package: "Logger"),
@@ -31,7 +31,7 @@ let package = Package(
             name: "StorageTests",
             dependencies: [
                 "Storage",
-                .product(name: "WCDBSwift", package: "wcdb-spm-prebuilt"),
+                .product(name: "WCDBSwift", package: "wcdb.xcframework"),
             ],
         ),
     ],

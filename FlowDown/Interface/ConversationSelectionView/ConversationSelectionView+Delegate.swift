@@ -9,6 +9,29 @@ import Storage
 import UIKit
 
 extension ConversationSelectionView: UITableViewDelegate {
+    // MARK: - Selection
+
+    func tableView(_: UITableView, shouldHighlightRowAt indexPath: IndexPath) -> Bool {
+        if case .folderPlaceholder = dataSource.itemIdentifier(for: indexPath) { return false }
+        return true
+    }
+
+    func tableView(_: UITableView, willSelectRowAt indexPath: IndexPath) -> IndexPath? {
+        if case .folderPlaceholder = dataSource.itemIdentifier(for: indexPath) { return nil }
+        return indexPath
+    }
+
+    func tableView(_: UITableView, canFocusRowAt indexPath: IndexPath) -> Bool {
+        if case .folderPlaceholder = dataSource.itemIdentifier(for: indexPath) { return false }
+        return true
+    }
+
+    func tableView(_: UITableView, selectionFollowsFocusForRowAt indexPath: IndexPath) -> Bool {
+        // Moving keyboard focus across a folder row must not toggle it.
+        guard case .conversation = dataSource.itemIdentifier(for: indexPath) else { return false }
+        return true
+    }
+
     func tableView(_: UITableView, didSelectRowAt indexPath: IndexPath) {
         guard let item = dataSource.itemIdentifier(for: indexPath) else { return }
         switch item {
@@ -16,12 +39,16 @@ extension ConversationSelectionView: UITableViewDelegate {
             Logger.ui.debugFile("ConversationSelectionView didSelectRowAt: \(identifier)")
             ChatSelection.shared.select(identifier, options: [.collapseSidebar])
         case let .folder(identifier):
-            // Keep the highlight off folder rows so every tap starts from an
+            // Keep the highlight off folder rows so every click starts from an
             // unselected row and reliably re-triggers this delegate call.
-            tableView.deselectRow(at: indexPath, animated: true)
+            tableView.deselectRow(at: indexPath, animated: false)
             toggleFolder(identifier)
+        case .folderPlaceholder:
+            tableView.deselectRow(at: indexPath, animated: false)
         }
     }
+
+    // MARK: - Swipe Actions
 
     func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
         guard let item = dataSource.itemIdentifier(for: indexPath), case let .conversation(identifier) = item else { return nil }
@@ -40,11 +67,7 @@ extension ConversationSelectionView: UITableViewDelegate {
                 return
             }
 
-            let snapshot = dataSource.snapshot()
-            let identifiers = snapshot.itemIdentifiers.compactMap { item -> Conversation.ID? in
-                guard case let .conversation(identifier) = item else { return nil }
-                return identifier
-            }
+            let identifiers = displayedConversationIdentifiers()
             let currentSelectionIndex = identifiers.firstIndex(of: identifier)
             let isDeletingSelectedRow = tableView.indexPathForSelectedRow == indexPath
 
@@ -92,28 +115,99 @@ extension ConversationSelectionView: UITableViewDelegate {
         return configuration
     }
 
+    // MARK: - Context Menu
+
+    func tableView(
+        _ tableView: UITableView,
+        contextMenuConfigurationForRowAt indexPath: IndexPath,
+        point _: CGPoint,
+    ) -> UIContextMenuConfiguration? {
+        guard let item = dataSource.itemIdentifier(for: indexPath),
+              let cell = tableView.cellForRow(at: indexPath)
+        else { return nil }
+
+        let menu: UIMenu?
+        switch item {
+        case let .conversation(identifier):
+            menu = ConversationManager.shared.menu(forConversation: identifier, view: cell)
+        case let .folder(identifier):
+            menu = ConversationManager.shared.folderMenu(forFolder: identifier, view: cell)
+        case .folderPlaceholder:
+            menu = nil
+        }
+        guard let menu else { return nil }
+
+        return UIContextMenuConfiguration(
+            identifier: indexPath as NSIndexPath,
+            previewProvider: nil,
+        ) { _ in menu }
+    }
+
+    func tableView(
+        _ tableView: UITableView,
+        previewForHighlightingContextMenuWithConfiguration configuration: UIContextMenuConfiguration,
+    ) -> UITargetedPreview? {
+        roundedPreview(for: configuration, in: tableView)
+    }
+
+    func tableView(
+        _ tableView: UITableView,
+        previewForDismissingContextMenuWithConfiguration configuration: UIContextMenuConfiguration,
+    ) -> UITargetedPreview? {
+        roundedPreview(for: configuration, in: tableView)
+    }
+
+    private func roundedPreview(
+        for configuration: UIContextMenuConfiguration,
+        in tableView: UITableView,
+    ) -> UITargetedPreview? {
+        guard let indexPath = configuration.identifier as? IndexPath,
+              let cell = tableView.cellForRow(at: indexPath)
+        else { return nil }
+        let parameters = UIPreviewParameters()
+        parameters.backgroundColor = .clear
+        parameters.visiblePath = UIBezierPath(
+            roundedRect: cell.bounds,
+            cornerRadius: Cell.Metrics.cornerRadius,
+        )
+        return UITargetedPreview(view: cell, parameters: parameters)
+    }
+
+    // MARK: - Section Headers
+
     func tableView(_: UITableView, viewForHeaderInSection section: Int) -> UIView? {
         let sectionIdentifiers = dataSource.snapshot().sectionIdentifiers
-        let datedSectionCount = sectionIdentifiers.filter {
-            if case .date = $0 { return true }
-            return false
-        }.count
-        // Folder sections never show a header, and their presence alone should
-        // not bring back the date headers hidden in single-section lists.
-        guard datedSectionCount > 1 else { return nil }
-        guard case let .date(sectionIdentifier) = sectionIdentifiers[section] else { return nil }
-        return SectionDateHeaderView().with {
-            $0.updateTitle(date: sectionIdentifier)
+        guard sectionIdentifiers.indices.contains(section) else { return nil }
+        switch sectionIdentifiers[section] {
+        case .folders:
+            return SectionDateHeaderView(accessory: NewFolderButton()).with {
+                $0.updateTitle(String(localized: "Folders"))
+            }
+        case .folder:
+            return nil
+        case .favorites:
+            return SectionDateHeaderView().with {
+                $0.updateTitle(String(localized: "Favorite"))
+            }
+        case let .date(date):
+            return SectionDateHeaderView().with {
+                $0.updateTitle(date: date)
+            }
         }
     }
 
     func tableView(_: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
         let sectionIdentifiers = dataSource.snapshot().sectionIdentifiers
-        guard case .date = sectionIdentifiers[section] else { return 0 }
-        let datedSectionCount = sectionIdentifiers.filter {
-            if case .date = $0 { return true }
-            return false
-        }.count
-        return datedSectionCount > 1 ? UITableView.automaticDimension : 0
+        guard sectionIdentifiers.indices.contains(section) else { return 0 }
+        if case .folder = sectionIdentifiers[section] { return 0 }
+        return SectionDateHeaderView.height
+    }
+
+    func tableView(_: UITableView, heightForFooterInSection _: Int) -> CGFloat {
+        0
+    }
+
+    func tableView(_: UITableView, viewForFooterInSection _: Int) -> UIView? {
+        nil
     }
 }

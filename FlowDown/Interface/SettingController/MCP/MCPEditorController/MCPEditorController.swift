@@ -37,6 +37,7 @@ class MCPEditorController: StackScrollController {
             target: self,
             action: #selector(checkTapped),
         )
+        navigationItem.rightBarButtonItem?.title = String(localized: "Done")
 
         MCPService.shared.servers
             .removeDuplicates()
@@ -176,11 +177,12 @@ class MCPEditorController: StackScrollController {
                 placeholder: "\("https://")",
                 text: server.endpoint.isEmpty ? "https://" : server.endpoint,
             ) { output in
+                let endpoint = output.trimmingCharacters(in: .whitespacesAndNewlines)
                 MCPService.shared.edit(identifier: self.serverId) {
-                    $0.update(\.endpoint, to: output)
+                    $0.update(\.endpoint, to: endpoint)
                 }
                 self.refreshUI()
-                view.configure(value: output.isEmpty ? "Not Configured" : output)
+                view.configure(value: endpoint.isEmpty ? "Not Configured" : endpoint)
             }
             view.parentViewController?.present(input, animated: true)
         }
@@ -208,14 +210,18 @@ class MCPEditorController: StackScrollController {
                     $0.update(\.header, to: header)
                 }
                 self.refreshUI()
-                view.configure(value: object.isEmpty ? String(localized: "No Headers") : String(localized: "Configured"))
+                view.configure(
+                    value: object.isEmpty ? String(localized: "No Headers") : String(localized: "Configured")
+                )
             }
             view.parentViewController?.navigationController?.pushViewController(textEditor, animated: true)
         }
         headerView.configure(icon: .init(systemName: "list.bullet"))
         headerView.configure(title: "Headers")
         headerView.configure(description: "This value will be added to the request as additional header.")
-        headerView.configure(value: server.header.isEmpty ? String(localized: "No Headers") : String(localized: "Configured"))
+        headerView.configure(
+            value: server.header.isEmpty ? String(localized: "No Headers") : String(localized: "Configured")
+        )
         stackView.addArrangedSubviewWithMargin(headerView)
         stackView.addArrangedSubview(SeparatorView())
 

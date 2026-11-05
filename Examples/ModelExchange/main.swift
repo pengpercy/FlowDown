@@ -46,11 +46,9 @@ private struct ExampleView: View {
 
     private let callbackScheme = "example-callback"
     @State private var selectedCapabilities: Set<ModelExchangeCapability> = [.audio, .developerRole]
-    private let allCapabilities: [ModelExchangeCapability] = [.audio, .visual, .tool, .developerRole]
 
     private var builder: ModelExchangeRequestBuilder {
         ModelExchangeRequestBuilder(
-            flowdownScheme: "flowdown",
             callbackScheme: callbackScheme,
             keyPair: keyPair,
         )
@@ -77,7 +75,7 @@ private struct ExampleView: View {
             }
 
             Section("Capabilities") {
-                ForEach(allCapabilities, id: \.self) { capability in
+                ForEach(ModelExchangeCapability.allCases, id: \.self) { capability in
                     Toggle(name(for: capability), isOn: binding(for: capability))
                 }
             }
@@ -170,10 +168,13 @@ private struct ExampleView: View {
               let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
         else { return }
 
-        let dict = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).compactMap { item -> (String, String)? in
-            guard let value = item.value else { return nil }
-            return (item.name.lowercased(), value)
-        })
+        let dict = Dictionary(
+            (components.queryItems ?? []).compactMap { item -> (String, String)? in
+                guard let value = item.value else { return nil }
+                return (item.name.lowercased(), value)
+            },
+            uniquingKeysWith: { first, _ in first }
+        )
 
         switch dict["stage"]?.lowercased() {
         case "verification":

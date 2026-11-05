@@ -7,39 +7,25 @@ import json
 import sys
 from pathlib import Path
 
+from i18n_tools import inconsistent_english_value
+
 
 def find_inconsistent_keys(xcstrings_path):
     """Find entries where key != English value."""
     with open(xcstrings_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
-    
+
     inconsistent = []
-    
+
     for key, entry in data.get('strings', {}).items():
-        # Skip special entries
-        if 'shouldTranslate' in entry and not entry['shouldTranslate']:
-            continue
-        
-        localizations = entry.get('localizations', {})
-        en_value = None
-        
-        # Get English value
-        if 'en' in localizations:
-            en_unit = localizations['en'].get('stringUnit', {})
-            en_value = en_unit.get('value')
-        
-        # If there's no explicit English localization, the key is the English value
-        if en_value is None:
-            continue
-        
-        # Check if key matches English value
-        if key != en_value:
+        en_value = inconsistent_english_value(key, entry)
+        if en_value is not None:
             inconsistent.append({
                 'key': key,
                 'en_value': en_value,
-                'has_zh': 'zh-Hans' in localizations
+                'has_zh': 'zh-Hans' in entry['localizations']
             })
-    
+
     return inconsistent
 
 
@@ -74,8 +60,9 @@ def main():
     
     print(f"\n\nTotal: {len(inconsistent)} entries need to be updated")
     
-    # Save to file for later use
-    output_file = xcstrings_path.parent / "inconsistent_keys.json"
+    # Save to file for later use, outside the synchronized groups the app bundles
+    output_file = Path(__file__).resolve().parents[3] / ".build" / "inconsistent_keys.json"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
     with open(output_file, 'w', encoding='utf-8') as f:
         json.dump(inconsistent, f, ensure_ascii=False, indent=2)
     print(f"\nDetails saved to: {output_file}")

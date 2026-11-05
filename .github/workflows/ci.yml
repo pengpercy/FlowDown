@@ -13,33 +13,20 @@ on:
       - "ci_scripts/**"
       - "Makefile"
       - "Package.resolved"
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  verify-packages:
-    name: Verify Package Pins
-    runs-on: macos-26
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Check Required Pins
-        run: make package-verify
-
   build:
-    name: Build (${{ matrix.target }})
+    # A compile check: Debug, Apple Silicon only. Release archives for both
+    # architectures are built by prebuild-macos-release.yml.
+    name: Build (Mac Catalyst, arm64)
     runs-on: macos-26
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: ios
-            scheme: FlowDown
-            destination: "generic/platform=iOS"
-            archive_path: BuildArtifacts/ios.xcarchive
-          - target: macos
-            scheme: FlowDown
-            destination: "generic/platform=macOS,variant=Mac Catalyst"
-            archive_path: BuildArtifacts/macos.xcarchive
+    env:
+      DERIVED_DATA: ${{ github.workspace }}/.ci/DerivedData
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -51,58 +38,55 @@ jobs:
           chmod +x Resources/DevKit/scripts/select_newest_xcode.sh
           ./Resources/DevKit/scripts/select_newest_xcode.sh
 
-      - name: Resolve Packages (${{ matrix.target }})
+      - name: Read Xcode Version
+        id: xcode
+        run: echo "version=$(xcodebuild -version | awk 'NR == 1 { print $2 }')" >> "$GITHUB_OUTPUT"
+
+      - name: Restore SwiftPM Source Packages
+        uses: actions/cache@v5
+        with:
+          path: .ci/DerivedData/SourcePackages
+          key: flowdown-ci-${{ steps.xcode.outputs.version }}-swiftpm-${{ hashFiles('FlowDown.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'Frameworks/**/Package.resolved') }}
+          restore-keys: |
+            flowdown-ci-${{ steps.xcode.outputs.version }}-swiftpm-
+
+      - name: Resolve Packages
         run: |
           set -o pipefail
           xcodebuild -downloadComponent MetalToolchain
           xcodebuild \
             -workspace FlowDown.xcworkspace \
-            -scheme "${{ matrix.scheme }}" \
+            -scheme FlowDown \
+            -derivedDataPath "$DERIVED_DATA" \
             -resolvePackageDependencies \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
             | xcbeautify --is-ci --disable-colored-output --disable-logging
 
-      - name: Strip mlx-swift CUDA Plugin (${{ matrix.target }})
-        run: |
-          chmod +x Resources/DevKit/scripts/strip_mlx_cuda_plugin.sh
-          ./Resources/DevKit/scripts/strip_mlx_cuda_plugin.sh
-
-      - name: Archive (${{ matrix.target }})
+      - name: Build
         run: |
           set -o pipefail
-          xcodebuild -downloadComponent MetalToolchain
           mkdir -p BuildArtifacts
           xcodebuild \
             -workspace FlowDown.xcworkspace \
-            -scheme "${{ matrix.scheme }}" \
-            -configuration Release \
-            -destination '${{ matrix.destination }}' \
-            archive \
-            -archivePath "${{ matrix.archive_path }}" \
-            -resultBundlePath "BuildArtifacts/${{ matrix.target }}.xcresult" \
+            -scheme FlowDown \
+            -configuration Debug \
+            -destination 'generic/platform=macOS,variant=Mac Catalyst' \
+            -derivedDataPath "$DERIVED_DATA" \
+            -resultBundlePath BuildArtifacts/build.xcresult \
+            -skipMacroValidation \
+            -skipPackagePluginValidation \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=YES \
+            COMPILER_INDEX_STORE_ENABLE=NO \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
+            build \
             | xcbeautify --is-ci --disable-colored-output --disable-logging
 
-      - name: Compress Archive (${{ matrix.target }})
-        run: |
-          ditto -c -k --sequesterRsrc --keepParent "${{ matrix.archive_path }}" "BuildArtifacts/${{ matrix.target }}.xcarchive.zip"
-
-      - name: Upload Build Artifact (${{ matrix.target }})
+      - name: Upload Build Result
+        if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.target }}-xcresult
-          path: BuildArtifacts/${{ matrix.target }}.xcresult
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Upload Archive Artifact (${{ matrix.target }})
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ matrix.target }}-xcarchive
-          path: BuildArtifacts/${{ matrix.target }}.xcarchive.zip
-          if-no-files-found: error
+          name: build-xcresult
+          path: BuildArtifacts/build.xcresult
           retention-days: 7

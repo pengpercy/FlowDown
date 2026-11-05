@@ -15,14 +15,13 @@ extension UIViewController {
     func presentDeleteConfirmation(
         title: String.LocalizationValue,
         message: String.LocalizationValue,
-        deleteTitle: String.LocalizationValue = "Delete",
         onConfirm: @escaping @MainActor () -> Void,
     ) {
         let alert = AlertViewController(title: title, message: message) { context in
             context.addAction(title: "Cancel") {
                 context.dispose()
             }
-            context.addAction(title: deleteTitle, attribute: .accent) {
+            context.addAction(title: "Delete", attribute: .accent) {
                 context.dispose { onConfirm() }
             }
         }
@@ -33,40 +32,31 @@ extension UIViewController {
     var topMostController: UIViewController {
         var current: UIViewController = self
 
-        while true {
-            if let presentedViewController = current.presentedViewController {
-                current = presentedViewController
+        while let presentedViewController = current.presentedViewController {
+            current = presentedViewController
+        }
+
+        let possibleSelectors: [Selector] = [
+            NSSelectorFromString("topViewController"),
+            NSSelectorFromString("visibleViewController"),
+            NSSelectorFromString("contentViewController"),
+            NSSelectorFromString("rootViewController"),
+            NSSelectorFromString("selectedViewController"),
+            NSSelectorFromString("detailViewController"),
+        ]
+        for selector in possibleSelectors {
+            guard current.responds(to: selector),
+                  let next = current.perform(selector)?
+                  .takeUnretainedValue()
+                  as? UIViewController
+            else {
                 continue
             }
+            current = next
+        }
 
-            let possibleSelectors: [Selector] = [
-                NSSelectorFromString("topViewController"),
-                NSSelectorFromString("visibleViewController"),
-                NSSelectorFromString("contentViewController"),
-                NSSelectorFromString("rootViewController"),
-                NSSelectorFromString("selectedViewController"),
-                NSSelectorFromString("detailViewController"),
-            ]
-            for selector in possibleSelectors {
-                guard current.responds(to: selector),
-                      let next = current.perform(selector)?
-                      .takeUnretainedValue()
-                      as? UIViewController
-                else {
-                    continue
-                }
-                current = next
-            }
-
-            // loook for child controller that has the same frame as current
-            for child in current.children {
-                if child.view.frame == current.view.frame {
-                    current = child
-                    continue
-                }
-            }
-
-            break
+        for child in current.children where child.view.frame == current.view.frame {
+            current = child
         }
 
         return current

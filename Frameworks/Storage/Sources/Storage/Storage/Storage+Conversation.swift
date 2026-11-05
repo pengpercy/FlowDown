@@ -62,42 +62,8 @@ public extension Storage {
         guard !objects.isEmpty else {
             return
         }
-        let modified = Date.now
-//        objects.forEach { $0.markModified(modified) }
 
-        try? runTransaction { [weak self] in
-            guard let self else { return }
-
-            let diff = try diffSyncable(objects: objects, handle: $0)
-            guard !diff.isEmpty else {
-                return
-            }
-
-            // 恢复修改时间
-            diff.insert.forEach { $0.markModified($0.creation) }
-
-            try $0.insertOrReplace(diff.insertOrReplace(), intoTable: Conversation.tableName)
-
-            if !diff.deleted.isEmpty {
-                let deletedIds = diff.deleted.map(\.objectId)
-                let update = StatementUpdate().update(table: Conversation.tableName)
-                    .set(Conversation.Properties.removed)
-                    .to(true)
-                    .set(Conversation.Properties.modified)
-                    .to(modified)
-                    .where(Conversation.Properties.objectId.in(deletedIds))
-
-                try $0.exec(update)
-            }
-
-            var changes = diff.insert.map { ($0, UploadQueue.Changes.insert) }
-                + diff.updated.map { ($0, UploadQueue.Changes.update) }
-                + diff.deleted.map { ($0, UploadQueue.Changes.delete) }
-            // 按 modified 升序
-            changes.sort { $0.0.modified < $1.0.modified }
-
-            try pendingUploadEnqueue(sources: changes, handle: $0)
-        }
+        try? putSyncable(objects)
 
         // 触发同步
         Task {
@@ -112,7 +78,7 @@ public extension Storage {
         )
     }
 
-    func conversationIds(by messageIds: [Message.ID], handle: Handle? = nil) -> [Conversation.ID: [Message.ID]] {
+    func conversationIds(by messageIds: [Message.ID]) -> [Conversation.ID: [Message.ID]] {
         guard !messageIds.isEmpty else {
             return [:]
         }
@@ -122,11 +88,7 @@ public extension Storage {
             .from(Message.tableName)
             .where(Message.Properties.objectId.in(messageIds))
 
-        let rows = if let handle {
-            try? handle.getRows(from: select)
-        } else {
-            try? db.getRows(from: select)
-        }
+        let rows = try? db.getRows(from: select)
 
         guard let rows, !rows.isEmpty else { return [:] }
 
@@ -151,7 +113,10 @@ public extension Storage {
     }
 
     @discardableResult
-    func conversationDuplicate(identifier: Conversation.ID, customize: @escaping (Conversation) -> Void) -> Conversation.ID? {
+    func conversationDuplicate(
+        identifier: Conversation.ID,
+        customize: @escaping (Conversation) -> Void
+    ) -> Conversation.ID? {
         guard !identifier.isEmpty else {
             return nil
         }
@@ -220,9 +185,10 @@ public extension Storage {
             oldMessageIdentifierSet.insert(oldMessageId)
 
             // new
+            // Copies keep their original creation, which orders the conversation
+            // and bounds deleteAfter to the rows that really come later.
             message.objectId = UUID().uuidString
             message.conversationId = newIdentifier
-            message.creation = nowDate
             message.modified = nowDate
 
             try handle.insert(message, intoTable: Message.tableName)
@@ -239,7 +205,6 @@ public extension Storage {
                 // new
                 attachment.objectId = UUID().uuidString
                 attachment.messageId = message.objectId
-                attachment.creation = nowDate
                 attachment.modified = nowDate
 
                 try handle.insert(attachment, intoTable: Attachment.tableName)
@@ -292,22 +257,15 @@ public extension Storage {
         }
     }
 
-    func conversationMarkDelete(conversationId: Conversation.ID, handle: Handle? = nil) throws {
+    func conversationMarkDelete(conversationId: Conversation.ID, handle: Handle) throws {
         guard !conversationId.isEmpty else {
             return
         }
 
-        let conv: Conversation? = if let handle {
-            try handle.getObject(
-                fromTable: Conversation.tableName,
-                where: Conversation.Properties.objectId == conversationId,
-            )
-        } else {
-            try db.getObject(
-                fromTable: Conversation.tableName,
-                where: Conversation.Properties.objectId == conversationId,
-            )
-        }
+        let conv: Conversation? = try handle.getObject(
+            fromTable: Conversation.tableName,
+            where: Conversation.Properties.objectId == conversationId,
+        )
 
         guard let conv else { return }
 
@@ -322,21 +280,17 @@ public extension Storage {
             .set(Conversation.Properties.modified)
             .to(conv.modified)
             .where(Conversation.Properties.objectId == conversationId)
-        if let handle {
-            try handle.exec(update)
-        } else {
-            try db.exec(update)
-        }
+        try handle.exec(update)
 
         try pendingUploadEnqueue(sources: [(conv, .delete)], handle: handle)
     }
 
-    func conversationMarkDelete(skipSync: Bool = false, handle: Handle? = nil) throws {
-        let convs: [Conversation] = if let handle {
-            try handle.getObjects(fromTable: Conversation.tableName, where: Conversation.Properties.removed == false, orderBy: [Conversation.Properties.modified.order(.ascending)])
-        } else {
-            try db.getObjects(fromTable: Conversation.tableName, where: Conversation.Properties.removed == false, orderBy: [Conversation.Properties.modified.order(.ascending)])
-        }
+    func conversationMarkDelete(handle: Handle) throws {
+        let convs: [Conversation] = try handle.getObjects(
+            fromTable: Conversation.tableName,
+            where: Conversation.Properties.removed == false,
+            orderBy: [Conversation.Properties.modified.order(.ascending)],
+        )
 
         guard !convs.isEmpty else {
             return
@@ -356,15 +310,7 @@ public extension Storage {
             .to(modified)
             .where(Conversation.Properties.objectId.in(objectIds))
 
-        if let handle {
-            try handle.exec(update)
-        } else {
-            try db.exec(update)
-        }
-
-        guard !skipSync else {
-            return
-        }
+        try handle.exec(update)
 
         try pendingUploadEnqueue(sources: convs.map { ($0, .delete) }, handle: handle)
     }
@@ -373,5 +319,30 @@ public extension Storage {
         try conversationMarkDelete(handle: handle)
         try messageMarkDelete(skipAttachment: true, handle: handle)
         try attachmentsMarkDelete(handle: handle)
+
+        // Summaries are injected into new chats, so they go with the conversations.
+        let summaries: [ConversationSummary] = try handle.getObjects(
+            fromTable: ConversationSummary.tableName,
+            where: ConversationSummary.Properties.removed == false,
+        )
+        guard !summaries.isEmpty else {
+            return
+        }
+
+        let modified = Date.now
+        for summary in summaries {
+            summary.removed = true
+            summary.markModified(modified)
+        }
+
+        let update = StatementUpdate().update(table: ConversationSummary.tableName)
+            .set(ConversationSummary.Properties.removed)
+            .to(true)
+            .set(ConversationSummary.Properties.modified)
+            .to(modified)
+            .where(ConversationSummary.Properties.objectId.in(summaries.map(\.objectId)))
+        try handle.exec(update)
+
+        try pendingUploadEnqueue(sources: summaries.map { ($0, .delete) }, handle: handle)
     }
 }

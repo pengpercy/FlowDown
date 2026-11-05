@@ -17,15 +17,27 @@ PACKAGE_RESOLVED_FILES=(
     Frameworks/*/Package.resolved
 )
 
-# Resolve against the pristine mlx-swift manifest; the CUDA-plugin strip hides
-# part of the dependency graph. See strip_mlx_cuda_plugin.sh.
-"$SCRIPT_DIR/strip_mlx_cuda_plugin.sh" --restore
+# Xcode re-resolves from the SourcePackages workspace state, not from scratch,
+# so dropping Package.resolved alone keeps every cached pin. Drop the state too.
+typeset -a source_packages
+for variable in CI_DERIVED_DATA_PATH DERIVED_DATA; do
+    derived="${(P)variable:-}"
+    [[ -n "$derived" ]] && source_packages+=("${derived}/SourcePackages")
+done
+source_packages+=(/private/tmp/flowdown-deriveddata/SourcePackages)
+source_packages+=("$HOME"/Library/Developer/Xcode/DerivedData/FlowDown-*/SourcePackages(N))
+for dir in "${(@u)source_packages}"; do
+    [[ -f "$dir/workspace-state.json" ]] || continue
+    echo "[+] clearing cached package state in $dir"
+    rm -f "$dir/workspace-state.json"
+done
 
 echo "[+] upgrading workspace packages..."
 rm -f "$WORKSPACE_RESOLVED"
 xcodebuild \
     -workspace "$WORKSPACE" \
     -scheme "$SCHEME" \
+    -derivedDataPath "${DERIVED_DATA:-/private/tmp/flowdown-deriveddata}" \
     -resolvePackageDependencies \
     | xcbeautify --is-ci --disable-colored-output --disable-logging
 
@@ -34,11 +46,5 @@ for file in "${PACKAGE_RESOLVED_FILES[@]}"; do
     echo "[+] upgrading $package_path packages..."
     swift package --package-path "$package_path" update
 done
-
-# Rebuilding the resolved file from scratch always drops the pins that Xcode 27
-# prunes and Xcode Cloud requires. See required-package-pins.json.
-"$SCRIPT_DIR/required_package_pins.py" fix
-
-"$SCRIPT_DIR/strip_mlx_cuda_plugin.sh"
 
 echo "[+] completed successfully"

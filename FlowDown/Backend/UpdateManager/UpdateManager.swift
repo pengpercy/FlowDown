@@ -23,6 +23,12 @@ protocol ReceiptStateProviding {
 
 extension FileManager: ReceiptStateProviding {}
 
+private func releaseParseError() -> NSError {
+    NSError(domain: "UpdateManagerError", code: 1, userInfo: [
+        NSLocalizedDescriptionKey: String(localized: "Failed to parse release information."),
+    ])
+}
+
 protocol ReleaseFeedClient {
     func latestGitHubRelease() async throws -> GitHubRelease
 }
@@ -58,9 +64,7 @@ struct GitHubReleaseFeedClient: ReleaseFeedClient {
     func latestGitHubRelease() async throws -> GitHubRelease {
         let (data, _) = try await session.data(from: latestReleaseURL)
         guard let release = try? JSONDecoder().decode(GitHubRelease.self, from: data) else {
-            throw NSError(domain: "UpdateManagerError", code: 1, userInfo: [
-                NSLocalizedDescriptionKey: String(localized: "Failed to parse release information."),
-            ])
+            throw releaseParseError()
         }
         return release
     }
@@ -81,7 +85,6 @@ class UpdateManager: NSObject {
     private let releaseFeedClient: ReleaseFeedClient
 
     var canCheckForUpdates: Bool {
-        // Check if the current channel supports update checking
         [.fromGitHub].contains(currentChannel)
     }
 
@@ -155,7 +158,7 @@ class UpdateManager: NSObject {
             return
         }
         Logger.app.infoFile("checking for updates from \(bundleVersion)...")
-        guard [.fromGitHub].contains(currentChannel) else {
+        guard canCheckForUpdates else {
             Logger.app.errorFile("Update check is not supported for the current distribution channel.")
             return
         }
@@ -178,21 +181,27 @@ class UpdateManager: NSObject {
             title: "Checking for Updates",
             controller: controller,
         ) { completionHandler in
-            var package: DistributionChannel.RemotePackage?
+            let package: DistributionChannel.RemotePackage?
             do {
-                let packages = try await self.currentChannel.getRemoteVersion(
-                    releaseFeedClient: self.releaseFeedClient,
-                )
-                package = self.newestPackage(from: packages)
-                package = self.updatePackage(from: package)
-                Logger.app.infoFile("remote packages: \(packages)")
+                package = try await self.fetchAvailableUpdate()
             } catch {
                 Logger.app.errorFile("failed to check for updates: \(error.localizedDescription)")
+                // Rethrow so Indicator.progress reports the failure instead of "No Update Available".
+                throw error
             }
             await completionHandler {
                 completion(package: package)
             }
         }
+    }
+
+    func fetchAvailableUpdate() async throws -> DistributionChannel.RemotePackage? {
+        let packages = try await currentChannel.getRemoteVersion(
+            releaseFeedClient: releaseFeedClient,
+        )
+        let package = updatePackage(from: newestPackage(from: packages))
+        Logger.app.infoFile("remote packages: \(packages)")
+        return package
     }
 
     func updatePackage(from remotePackage: DistributionChannel.RemotePackage?) -> DistributionChannel.RemotePackage? {
@@ -210,7 +219,7 @@ class UpdateManager: NSObject {
     private func presentUpdateAlert(controller: UIViewController, package: DistributionChannel.RemotePackage) {
         let alert = AlertViewController(
             title: "Update Available",
-            message: String(localized: "A new version \(package.tag) is available. Would you like to download it?"),
+            message: "A new version \(package.tag) is available. Would you like to download it?",
         ) { context in
             context.allowSimpleDispose()
             context.addAction(title: "Cancel") {
@@ -232,7 +241,9 @@ extension DistributionChannel {
         let downloadURL: URL
     }
 
-    func getRemoteVersion(releaseFeedClient: ReleaseFeedClient = GitHubReleaseFeedClient()) async throws -> [RemotePackage] {
+    func getRemoteVersion(
+        releaseFeedClient: ReleaseFeedClient = GitHubReleaseFeedClient()
+    ) async throws -> [RemotePackage] {
         switch self {
         case .fromApple:
             return []
@@ -243,9 +254,7 @@ extension DistributionChannel {
                   !release.prerelease,
                   let downloadPageURL = URL(string: release.htmlURL)
             else {
-                throw NSError(domain: "UpdateManagerError", code: 1, userInfo: [
-                    NSLocalizedDescriptionKey: String(localized: "Failed to parse release information."),
-                ])
+                throw releaseParseError()
             }
             Logger.app.infoFile("latest release version: \(release.tagName), url: \(release.htmlURL)")
             return [.init(tag: release.tagName, downloadURL: downloadPageURL)]

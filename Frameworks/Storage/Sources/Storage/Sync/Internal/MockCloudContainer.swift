@@ -29,14 +29,6 @@ package final class MockCloudContainer: CloudContainer {
         }
     }
 
-    package func accountStatus() -> CKAccountStatus {
-        _accountStatus.withValue(\.self)
-    }
-
-    package var rawValue: CKContainer {
-        fatalError("This should never be called in tests.")
-    }
-
     package func accountStatus() async throws -> CKAccountStatus {
         _accountStatus.withValue { $0 }
     }
@@ -52,7 +44,13 @@ package final class MockCloudContainer: CloudContainer {
                 container = MockCloudContainer(
                     accountStatus: .available,
                     containerIdentifier: containerIdentifier,
-                    privateCloudDatabase: MockCloudDatabase(databaseScope: .private, dataManager: MockDataManager(temporaryDirectory: FileManager.default.temporaryDirectory.appending(component: UUID().uuidString))),
+                    privateCloudDatabase: MockCloudDatabase(
+                        databaseScope: .private,
+                        dataManager: MockDataManager(
+                            temporaryDirectory: FileManager.default.temporaryDirectory
+                                .appending(component: UUID().uuidString)
+                        )
+                    ),
                 )
                 container.privateCloudDatabase.set(container: container)
             }

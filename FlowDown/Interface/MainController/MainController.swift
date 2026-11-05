@@ -42,8 +42,40 @@ class MainController: UIViewController {
     static let catalystTitleBarHeight: CGFloat = 32
 
     var allowSidebarPersistence: Bool {
-        guard UIDevice.current.userInterfaceIdiom == .pad else { return false }
-        return UIDevice.current.orientation.isLandscape || view.bounds.width > 800
+        Self.allowsSidebarPersistence(
+            horizontalSizeClass: traitCollection.horizontalSizeClass,
+            size: view.bounds.size,
+        )
+    }
+
+    /// Below this width the sidebar is a drawer over the chat.
+    static let drawerLayoutMaximumWidth: CGFloat = 500
+
+    /// Whether a window this wide shows the sidebar as a drawer over the chat.
+    ///
+    /// This reads the window rather than the device: an iPhone that unfolds
+    /// into a large display keeps the phone idiom but has the room of an iPad.
+    static func usesDrawerLayout(width: CGFloat) -> Bool {
+        width < drawerLayoutMaximumWidth
+    }
+
+    /// Whether the open sidebar can stay on screen next to the chat.
+    ///
+    /// This reads the window rather than the device, because a narrow window
+    /// in Slide Over or Split View still reports a landscape device, a device
+    /// laid flat reports no orientation at all, and a foldable iPhone keeps the
+    /// phone idiom on its large display. It is never true below the width where
+    /// `updateViewConstraints` switches to the drawer layout, since a drawer
+    /// that persists can no longer be dismissed by selecting a conversation or
+    /// tapping the chat.
+    static func allowsSidebarPersistence(
+        horizontalSizeClass: UIUserInterfaceSizeClass,
+        size: CGSize,
+    ) -> Bool {
+        guard horizontalSizeClass == .regular,
+              !usesDrawerLayout(width: size.width)
+        else { return false }
+        return size.width > size.height || size.width > 800
     }
 
     var sidebarWidth: CGFloat = 256 {
@@ -55,8 +87,11 @@ class MainController: UIViewController {
 
     /// The sidebar width after reserving the room the chat needs.
     var resolvedSidebarWidth: CGFloat {
-        min(sidebarWidth, max(0, view.bounds.width - 300))
+        min(sidebarWidth, max(0, view.bounds.width - Self.minimumChatWidth))
     }
+
+    /// The fold split the last relaxed layout used, `nil` without a fold.
+    var appliedSidebarFoldSplit: SidebarFoldSplit?
 
     private var sidebarLayoutTick: CADisplayLink?
 
@@ -70,7 +105,7 @@ class MainController: UIViewController {
     /// animations at 9ms to 23,000 at 38ms, with the sidebar frozen on screen
     /// the whole time. The display link only fires when the render loop
     /// actually runs, which is exactly the pace the animation can be shown at.
-    private func scheduleSidebarLayout() {
+    func scheduleSidebarLayout() {
         guard sidebarLayoutTick == nil else { return }
         let link = CADisplayLink(target: self, selector: #selector(applySidebarLayout))
         link.add(to: .main, forMode: .common)
@@ -87,10 +122,36 @@ class MainController: UIViewController {
 
     static let sidebarCollapsedKey = "SidebarCollapsed"
 
+    /// How the sidebar sits next to the chat at the current window size.
+    enum SidebarPresentation {
+        /// A drawer over the chat, below `drawerLayoutMaximumWidth`.
+        case drawer
+        /// Beside the chat, but covering it while open.
+        case overlay
+        /// Beside the chat, with both panes live.
+        case persistent
+    }
+
+    /// The presentation the last layout pass used, `nil` before the first one.
+    private var sidebarPresentation: SidebarPresentation?
+
+    /// Set while the layout itself opens or closes the sidebar for a new
+    /// window size. That is not a choice the user made, so it is not saved.
+    private var isAdaptingSidebarToLayout = false
+
     var isSidebarCollapsed: Bool {
         didSet {
             guard oldValue != isSidebarCollapsed else { return }
-            UserDefaults.standard.set(isSidebarCollapsed, forKey: Self.sidebarCollapsedKey)
+            // A layout adapting to a new window size is not something the
+            // user did, so it neither saves, buzzes nor flashes the dragger.
+            // It lays out on its own right after.
+            guard !isAdaptingSidebarToLayout else { return }
+            // Opening and closing the drawer is navigation, not a preference:
+            // saving it would overwrite the state the user left the sidebar in
+            // on a wider layout, such as the inner display of a foldable.
+            if sidebarPresentation != .drawer {
+                UserDefaults.standard.set(isSidebarCollapsed, forKey: Self.sidebarCollapsedKey)
+            }
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             updateViewConstraints()
             contentView.contentView.isUserInteractionEnabled = allowsContentInteraction
@@ -122,18 +183,18 @@ class MainController: UIViewController {
     var bootAlertMessageQueue: [String] = []
     var cancellables: Set<AnyCancellable> = []
 
+    static var storedSidebarCollapsed: Bool? {
+        UserDefaults.standard.object(forKey: sidebarCollapsedKey) as? Bool
+    }
+
     init() {
-        // The phone sidebar is a drawer over the chat, so it always starts
-        // closed there; elsewhere the last state the user left it in wins.
-        let storedCollapsed = UserDefaults.standard.object(forKey: Self.sidebarCollapsedKey) as? Bool
+        // The last state the user left the sidebar in wins. Where the window
+        // turns out to need the drawer, the first layout pass closes it again
+        // without saving, see `adaptSidebar(to:)`.
         #if targetEnvironment(macCatalyst)
-            isSidebarCollapsed = storedCollapsed ?? false
+            isSidebarCollapsed = Self.storedSidebarCollapsed ?? false
         #else
-            if UIDevice.current.userInterfaceIdiom == .pad {
-                isSidebarCollapsed = storedCollapsed ?? true
-            } else {
-                isSidebarCollapsed = true
-            }
+            isSidebarCollapsed = Self.storedSidebarCollapsed ?? true
         #endif
 
         super.init(nibName: nil, bundle: nil)
@@ -200,21 +261,24 @@ class MainController: UIViewController {
             edgePanGesture.edges = .left
             edgePanGesture.delegate = self
             view.addGestureRecognizer(edgePanGesture)
+
+            // Persistence also reads the horizontal size class, which can
+            // change without the frame change `viewWillLayoutSubviews` watches.
+            _ = registerForTraitChanges([UITraitHorizontalSizeClass.self]) { (controller: MainController, _: UITraitCollection) in
+                controller.view.setNeedsUpdateConstraints()
+                controller.view.setNeedsLayout()
+            }
+
+            installFoldObserver()
         #endif
 
         setupViews()
-    }
-
-    override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated)
     }
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         scheduleWelcomeIfNeeded()
     }
-
-    private var previousLayoutRect: CGRect = .zero
 
     /// Whether the chat side accepts input.
     ///
@@ -231,17 +295,61 @@ class MainController: UIViewController {
 
     override func updateViewConstraints() {
         super.updateViewConstraints()
+        #if !targetEnvironment(macCatalyst)
+            let presentation = currentSidebarPresentation
+            adaptSidebar(to: presentation)
+        #endif
         sidebarDragger.isCollapsed = isSidebarCollapsed
-        sidebarDragger.layoutMaximalValue = Int(max(0, view.bounds.width - 300))
+        sidebarDragger.layoutMaximalValue = Int(max(0, view.bounds.width - Self.minimumChatWidth))
         #if targetEnvironment(macCatalyst)
             setupLayoutAsCatalyst()
         #else
-            if UIDevice.current.userInterfaceIdiom == .phone || view.frame.width < 500 {
+            switch presentation {
+            case .drawer:
                 setupLayoutAsCompactStyle()
-            } else {
+            case .overlay, .persistent:
                 setupLayoutAsRelaxedStyle()
             }
         #endif
+    }
+
+    /// The presentation the current window size calls for.
+    var currentSidebarPresentation: SidebarPresentation {
+        if Self.usesDrawerLayout(width: view.bounds.width) { return .drawer }
+        if allowSidebarPersistence { return .persistent }
+        return .overlay
+    }
+
+    /// Opens or closes the sidebar when the window changes how it can show it.
+    ///
+    /// Entering the drawer closes the sidebar, so the chat is visible and live
+    /// on a phone at launch and after a foldable closes onto its outer display.
+    /// Returning to a layout that keeps the sidebar beside the chat restores the
+    /// state the user saved there. Neither change is saved, see `isSidebarCollapsed`.
+    private func adaptSidebar(to presentation: SidebarPresentation) {
+        // A view that was never laid out has no meaningful size yet.
+        guard view.bounds.width > 0 else { return }
+        let previous = sidebarPresentation
+        sidebarPresentation = presentation
+        guard previous != presentation else { return }
+
+        var collapsed = isSidebarCollapsed
+        switch presentation {
+        case .drawer:
+            collapsed = true
+        case .persistent:
+            if previous != nil, collapsed, Self.storedSidebarCollapsed == false {
+                collapsed = false
+            }
+        case .overlay:
+            break
+        }
+        guard collapsed != isSidebarCollapsed else { return }
+
+        isAdaptingSidebarToLayout = true
+        isSidebarCollapsed = collapsed
+        isAdaptingSidebarToLayout = false
+        contentView.contentView.isUserInteractionEnabled = allowsContentInteraction
     }
 
     private var previousFrame: CGRect = .zero
@@ -259,6 +367,9 @@ class MainController: UIViewController {
         super.viewDidLayoutSubviews()
         updateShadowPath()
         contentView.contentView.isUserInteractionEnabled = allowsContentInteraction
+        #if !targetEnvironment(macCatalyst)
+            relayoutIfFoldMoved()
+        #endif
     }
 
     func updateShadowPath() {
@@ -304,7 +415,9 @@ class MainController: UIViewController {
         lastTouchBegin = .init()
 
         NSObject.cancelPreviousPerformRequests(
-            withTarget: self, selector: #selector(resetGestures), object: nil,
+            withTarget: self,
+            selector: #selector(resetGestures),
+            object: nil,
         )
         perform(#selector(resetGestures), with: nil, afterDelay: 0.25)
     }
@@ -352,7 +465,9 @@ class MainController: UIViewController {
         super.touchesMoved(touches, with: event)
 
         NSObject.cancelPreviousPerformRequests(
-            withTarget: self, selector: #selector(resetGestures), object: nil,
+            withTarget: self,
+            selector: #selector(resetGestures),
+            object: nil,
         )
         perform(#selector(resetGestures), with: nil, afterDelay: 0.25)
         guard presentedViewController == nil else { return }
@@ -393,15 +508,6 @@ class MainController: UIViewController {
         firstTouchLocation = nil
         touchesMoved = false
         updateLayoutGuideToOriginalStatus()
-    }
-
-    @objc private func contentViewButtonTapped() {
-        #if targetEnvironment(macCatalyst)
-            return
-        #else
-            guard !allowSidebarPersistence else { return }
-            view.doWithAnimation { self.isSidebarCollapsed.toggle() }
-        #endif
     }
 
     @objc func requestNewChat() {
@@ -459,7 +565,8 @@ class MainController: UIViewController {
         let trimmedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedMessage.isEmpty else {
             showErrorAlert(
-                title: "Error", message: "Empty message.",
+                title: "Error",
+                message: "Empty message.",
             )
             return
         }
@@ -505,7 +612,10 @@ class MainController: UIViewController {
 }
 
 extension MainController: UIGestureRecognizerDelegate {
-    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith _: UIGestureRecognizer) -> Bool {
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith _: UIGestureRecognizer
+    ) -> Bool {
         gestureRecognizer is UIScreenEdgePanGestureRecognizer
     }
 

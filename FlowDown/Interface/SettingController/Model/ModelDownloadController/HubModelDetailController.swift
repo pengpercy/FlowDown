@@ -30,8 +30,6 @@ class HubModelDetailController: StackScrollController {
     let indicator = UIActivityIndicatorView(style: .medium)
     var task: Task<Void, Error>?
 
-    let disableWarnings = false
-
     override func viewDidLoad() {
         super.viewDidLoad()
 
@@ -163,6 +161,7 @@ class HubModelDetailController: StackScrollController {
                 target: self,
                 action: #selector(download),
             )
+            navigationItem.rightBarButtonItem?.title = String(localized: "Done")
         } else {
             if let downloadSize {
                 if downloadSize > 0 {
@@ -218,11 +217,12 @@ class HubModelDetailController: StackScrollController {
             return
         }
 
-        let sizeText = ByteCountFormatter.string(fromByteCount: Int64(downloadSize ?? 128 * 1024 * 1024 * 1024), countStyle: .file)
+        let sizeText = ByteCountFormatter.string(
+            fromByteCount: Int64(downloadSize ?? 128 * 1024 * 1024 * 1024),
+            countStyle: .file
+        )
 
-        if disableWarnings {
-            present(downloadController, animated: true)
-        } else if model.id.lowercased().hasPrefix("mlx-community/") {
+        if model.id.lowercased().hasPrefix("mlx-community/") {
             presentDownloadWarning(
                 title: "Download Model",
                 message: """

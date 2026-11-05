@@ -5,20 +5,16 @@
 //  Created by 秋星桥 on 1/21/25.
 //
 
-import Combine
 import Storage
 import UIKit
 
 class Sidebar: UIView {
     let brandingLabel = SidebarBrandingLabel()
     let newChatButton = NewChatButton()
-    let newFolderButton = NewFolderButton()
     let searchButton = SearchControllerOpenButton()
     let settingButton = SettingButton()
     let conversationSelectionView = ConversationSelectionView()
     let syncIndicator = SidebarSyncLabel()
-
-    private var cancellables = Set<AnyCancellable>()
 
     init() {
         super.init(frame: .zero)
@@ -27,25 +23,18 @@ class Sidebar: UIView {
 
         addSubview(brandingLabel)
         addSubview(newChatButton)
-        addSubview(newFolderButton)
         addSubview(settingButton)
         addSubview(searchButton)
         addSubview(syncIndicator)
 
         brandingLabel.snp.makeConstraints { make in
             make.left.top.equalToSuperview()
-            make.right.equalTo(newFolderButton.snp.left).offset(-spacing)
+            make.right.equalTo(newChatButton.snp.left).offset(-spacing)
         }
 
         newChatButton.delegate = self
         newChatButton.snp.makeConstraints { make in
             make.right.equalToSuperview()
-            make.width.height.equalTo(32)
-            make.centerY.equalTo(brandingLabel.snp.centerY)
-        }
-
-        newFolderButton.snp.makeConstraints { make in
-            make.right.equalTo(newChatButton.snp.left).offset(-8)
             make.width.height.equalTo(32)
             make.centerY.equalTo(brandingLabel.snp.centerY)
         }

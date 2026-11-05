@@ -129,7 +129,12 @@ final class ConversationSession: Identifiable {
         currentTask?.cancel()
         currentTask = nil
         thinkingDurationTimer.values.forEach { $0.invalidate() }
-        ConversationSessionManager.shared.markSessionCompleted(id)
+        // The last reference can drop on any thread (a cancel poller ends on a
+        // cooperative one), and the manager's execution state is main-confined.
+        let id = id
+        DispatchQueue.main.async {
+            ConversationSessionManager.shared.markSessionCompleted(id)
+        }
     }
 
     init(id: Conversation.ID) {
@@ -149,9 +154,7 @@ final class ConversationSession: Identifiable {
         var visualAuxiliary: ModelManager.ModelIdentifier?
     }
 
-    var models: Models = .init() {
-        didSet { Logger.model.infoFile("models updated \(models)") }
-    }
+    let models = Models()
 
     func prepareSystemPrompt() {
         let modelManager = ModelManager.shared
@@ -194,7 +197,7 @@ final class ConversationSession: Identifiable {
     func addAttachments(_ attachments: [RichEditorView.Object.Attachment], to message: Message) {
         let messageID = message.objectId
         let mapped = attachments.map { attachment in
-            // 跳过插入，由后面的attachmentsUpdate 统一批量插入
+            // Skip the insert here; attachmentsUpdate below writes them in one batch.
             sdb.attachmentMake(with: messageID, skipSave: true) {
                 self.updateAttachment($0, using: attachment)
             }
@@ -278,7 +281,6 @@ final class ConversationSession: Identifiable {
         attachments[messageID] ?? []
     }
 
-    /// 删除这条消息
     func delete(messageIdentifier: Message.ID) {
         cancelCurrentTask { [self] in
             sdb.deleteSupplementMessage(nextTo: messageIdentifier)
@@ -287,8 +289,9 @@ final class ConversationSession: Identifiable {
         }
     }
 
+    /// Drops a message created moments ago. It owns no supplement rows, so the
+    /// rows before it (such as this turn's web search) stay.
     func discard(messageIdentifier: Message.ID) {
-        sdb.deleteSupplementMessage(nextTo: messageIdentifier)
         sdb.delete(messageIdentifier: messageIdentifier)
         messages.removeAll { $0.objectId == messageIdentifier }
         attachments[messageIdentifier] = nil
@@ -296,7 +299,6 @@ final class ConversationSession: Identifiable {
         thinkingDurationTimer[messageIdentifier] = nil
     }
 
-    /// 删除自这条消息以后的全部数据
     func deleteCurrentAndAfter(messageIdentifier: Message.ID, completion: @escaping () -> Void = {}) {
         cancelCurrentTask { [self] in
             sdb.deleteAfter(messageIdentifier: messageIdentifier)
@@ -311,10 +313,9 @@ final class ConversationSession: Identifiable {
         }
     }
 
-    /// 更新单独的一条消息
     func update(messageIdentifier: Message.ID, content: String) {
         cancelCurrentTask { [self] in
-            guard let message = messages.first(where: { $0.objectId == messageIdentifier }) else {
+            guard let message = self.message(for: messageIdentifier) else {
                 return
             }
             message.update(\.document, to: content)
@@ -328,7 +329,7 @@ final class ConversationSession: Identifiable {
     }
 
     func update(messageIdentifier: Message.ID, reasoningContent: String) {
-        guard let message = messages.first(where: { $0.objectId == messageIdentifier }) else {
+        guard let message = self.message(for: messageIdentifier) else {
             return
         }
         message.update(\.reasoningContent, to: reasoningContent)
@@ -393,11 +394,16 @@ final class ConversationSession: Identifiable {
     }
 
     func nearestUserMessage(beforeOrEqual messageIdentifier: Message.ID) -> Message? {
-        guard let message = messages.first(where: { $0.objectId == messageIdentifier }) else {
+        guard let message = self.message(for: messageIdentifier) else {
             return nil
         }
 
-        return messages.last { $0.creation <= message.creation && $0.role == .user }
+        // Rows that only carry a tool's or the model's attachments sit
+        // between the prompt and its answer; retrying them would resend
+        // their placeholder text instead of the user's question.
+        return messages.last {
+            $0.creation <= message.creation && $0.role == .user && !isAttachmentHolder($0)
+        }
     }
 
     func retry(byClearAfter messageIdentifier: Message.ID, currentMessageListView: MessageListView) {
