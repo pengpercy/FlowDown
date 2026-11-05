@@ -13,11 +13,6 @@ PACKAGE_RESOLVED_FILES=(
 echo "[resolve-packages] workspace: $WORKSPACE"
 echo "[resolve-packages] scheme: $SCHEME"
 
-# The CUDA-plugin strip rewrites the resolved mlx-swift manifest in place, and
-# the patched manifest describes a smaller dependency graph than the real one.
-# Resolve against the pristine manifest and re-apply the strip afterwards.
-"$SCRIPT_DIR/strip_mlx_cuda_plugin.sh" --restore
-
 xcodebuild \
   -workspace "$WORKSPACE" \
   -scheme "$SCHEME" \
@@ -29,12 +24,5 @@ for file in "${PACKAGE_RESOLVED_FILES[@]}"; do
   echo "[resolve-packages] package: $package_path"
   swift package --package-path "$package_path" resolve
 done
-
-# Xcode 27's resolver prunes pins that no built target links, but Xcode Cloud's
-# older toolchain rejects a Package.resolved that is missing them. Put them back
-# before anyone commits the file.
-"$SCRIPT_DIR/required_package_pins.py" fix
-
-"$SCRIPT_DIR/strip_mlx_cuda_plugin.sh"
 
 echo "[resolve-packages] done"

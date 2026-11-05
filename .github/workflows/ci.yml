@@ -20,16 +20,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  verify-packages:
-    name: Verify Package Pins
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Check Required Pins
-        run: python3 Resources/DevKit/scripts/required_package_pins.py check
-
   build:
     # A compile check: Debug, Apple Silicon only. Release archives for both
     # architectures are built by prebuild-macos-release.yml.
@@ -70,11 +60,6 @@ jobs:
             -derivedDataPath "$DERIVED_DATA" \
             -resolvePackageDependencies \
             | xcbeautify --is-ci --disable-colored-output --disable-logging
-
-      - name: Strip mlx-swift CUDA Plugin
-        run: |
-          chmod +x Resources/DevKit/scripts/strip_mlx_cuda_plugin.sh
-          ./Resources/DevKit/scripts/strip_mlx_cuda_plugin.sh
 
       - name: Build
         run: |

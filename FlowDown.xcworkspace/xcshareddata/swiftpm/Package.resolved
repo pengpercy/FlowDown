@@ -165,10 +165,10 @@
     {
       "identity": "mlx-swift",
       "kind": "remoteSourceControl",
-      "location": "https://github.com/pengpercy/mlx-swift",
+      "location": "https://github.com/ml-explore/mlx-swift",
       "state": {
-        "revision": "5fd044b232a121a9c6e81ecb289b72620c39f202",
-        "version": "0.31.6-flowdown.1"
+        "revision": "7ede4fd6d05f63305c1c0ebf4f8c1909a637c574",
+        "version": "0.33.0"
       }
     },
     {
@@ -226,15 +226,6 @@
       }
     },
     {
-      "identity": "swift-argument-parser",
-      "kind": "remoteSourceControl",
-      "location": "https://github.com/apple/swift-argument-parser",
-      "state": {
-        "revision": "6a52f3251125d74daf04fcbd5e6f08a75d074382",
-        "version": "1.8.2"
-      }
-    },
-    {
       "identity": "swift-atomics",
       "kind": "remoteSourceControl",
       "location": "https://github.com/apple/swift-atomics.git",
@@ -257,8 +248,8 @@
       "kind": "remoteSourceControl",
       "location": "https://github.com/apple/swift-collections.git",
       "state": {
-        "revision": "98ef3c98609a1e31b7e157b5b619579001a789d6",
-        "version": "1.7.1"
+        "revision": "f96b909e1a9e469620bc5037c1e24e00153f376f",
+        "version": "1.7.5"
       }
     },
     {
