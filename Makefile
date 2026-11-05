@@ -56,7 +56,7 @@ endef
 .PHONY: all help \
 	build build-ios build-ios-simulator build-catalyst build-extension \
 	test test-unit test-chat-client-kit test-storage test-online-e2e \
-	install-metal-toolchain package-resolve package-update scan-license release-macos-dmg \
+	install-metal-toolchain package-resolve package-update package-verify scan-license release-macos-dmg \
 	localization-check localization-stale-check \
 	archive archive-ios archive-macos \
 	chore clean clean-build
@@ -82,6 +82,7 @@ help:
 	@echo "  install-metal-toolchain  Install the Xcode Metal toolchain"
 	@echo "  package-resolve       Resolve SwiftPM packages"
 	@echo "  package-update        Upgrade SwiftPM packages"
+	@echo "  package-verify        Check Package.resolved keeps the pins Xcode Cloud needs"
 	@echo "  scan-license          Refresh open source licenses"
 	@echo "  release-macos-dmg     Build one signed Mac Catalyst DMG (ARCH and VERSION required)"
 	@echo ""
@@ -191,6 +192,9 @@ package-resolve:
 
 package-update:
 	./Resources/DevKit/scripts/update-packages.sh
+
+package-verify:
+	./Resources/DevKit/scripts/required_package_pins.py check
 
 scan-license:
 	./Resources/DevKit/scripts/scan.license.sh
