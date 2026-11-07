@@ -10,7 +10,9 @@ import ChatClientKit
 import Combine
 import ConfigurableKit
 import Foundation
-import MLX
+#if canImport(MLX)
+    import MLX
+#endif
 import OrderedCollections
 import Storage
 import UIKit

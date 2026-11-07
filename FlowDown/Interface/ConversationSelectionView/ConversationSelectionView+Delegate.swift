@@ -45,6 +45,9 @@ extension ConversationSelectionView: UITableViewDelegate {
             toggleFolder(identifier)
         case .folderPlaceholder:
             tableView.deselectRow(at: indexPath, animated: false)
+        case .showMore:
+            tableView.deselectRow(at: indexPath, animated: false)
+            showMoreRecent()
         }
     }
 
@@ -132,7 +135,7 @@ extension ConversationSelectionView: UITableViewDelegate {
             menu = ConversationManager.shared.menu(forConversation: identifier, view: cell)
         case let .folder(identifier):
             menu = ConversationManager.shared.folderMenu(forFolder: identifier, view: cell)
-        case .folderPlaceholder:
+        case .folderPlaceholder, .showMore:
             menu = nil
         }
         guard let menu else { return nil }
@@ -179,20 +182,20 @@ extension ConversationSelectionView: UITableViewDelegate {
         let sectionIdentifiers = dataSource.snapshot().sectionIdentifiers
         guard sectionIdentifiers.indices.contains(section) else { return nil }
         switch sectionIdentifiers[section] {
+        case .favorites:
+            return SectionHeaderView().with {
+                $0.updateTitle(String(localized: "Favorite"))
+            }
+        case .recent:
+            return SectionHeaderView().with {
+                $0.updateTitle(String(localized: "Conversations"))
+            }
         case .folders:
-            return SectionDateHeaderView(accessory: NewFolderButton()).with {
+            return SectionHeaderView(accessory: NewFolderButton()).with {
                 $0.updateTitle(String(localized: "Folders"))
             }
         case .folder:
             return nil
-        case .favorites:
-            return SectionDateHeaderView().with {
-                $0.updateTitle(String(localized: "Favorite"))
-            }
-        case let .date(date):
-            return SectionDateHeaderView().with {
-                $0.updateTitle(date: date)
-            }
         }
     }
 
@@ -200,7 +203,7 @@ extension ConversationSelectionView: UITableViewDelegate {
         let sectionIdentifiers = dataSource.snapshot().sectionIdentifiers
         guard sectionIdentifiers.indices.contains(section) else { return 0 }
         if case .folder = sectionIdentifiers[section] { return 0 }
-        return SectionDateHeaderView.height
+        return SectionHeaderView.height
     }
 
     func tableView(_: UITableView, heightForFooterInSection _: Int) -> CGFloat {

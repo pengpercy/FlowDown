@@ -54,7 +54,7 @@ define run-localization-script
 endef
 
 .PHONY: all help \
-	build build-ios build-ios-simulator build-catalyst build-extension \
+	build build-ios build-ios-simulator build-catalyst run-catalyst setup-local-xcode copy-real-data build-extension \
 	test test-unit test-chat-client-kit test-storage test-online-e2e \
 	install-metal-toolchain package-resolve package-update scan-license release-macos-dmg \
 	localization-check localization-stale-check \
@@ -70,6 +70,9 @@ help:
 	@echo "  build-catalyst        Build the Mac Catalyst app"
 	@echo "  build-ios-simulator   Build the iOS app for the simulator"
 	@echo "  build-extension       Build the translation provider extension"
+	@echo "  run-catalyst          Build and launch the Mac Catalyst app with its own data"
+	@echo "  setup-local-xcode     Let Xcode run the Mac Catalyst app without team signing"
+	@echo "  copy-real-data        Copy the installed app's database into the local build"
 	@echo ""
 	@echo "Test:"
 	@echo "  test                  Run the default test flow"
@@ -101,6 +104,7 @@ help:
 	@echo ""
 	@echo "Flags:"
 	@echo "  dirty=1               Allow flows that intentionally run on a dirty tree"
+	@echo "  real-data=1           run-catalyst starts from a copy of the installed app's database"
 
 build: build-ios build-catalyst
 
@@ -125,6 +129,17 @@ build-catalyst:
 		-destination "$(CATALYST_DESTINATION)" \
 		SUPPORTS_MACCATALYST=YES \
 		build
+
+run-catalyst: build-catalyst
+	REAL_DATA="$(real-data)" ./Resources/DevKit/scripts/run-catalyst-local.sh \
+		"$(DERIVED_DATA)/Build/Products/Debug-maccatalyst/FlowDown.app" \
+		"$(DERIVED_DATA)/LocalRun"
+
+setup-local-xcode:
+	./Resources/DevKit/scripts/setup-local-xcode.sh
+
+copy-real-data:
+	./Resources/DevKit/scripts/copy-real-data-local.sh
 
 build-extension:
 	$(prepare-build-dirs)

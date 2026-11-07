@@ -11,7 +11,9 @@ import CloudKit
 import Combine
 import ConfigurableKit
 import MarkdownView
-import MLX
+#if canImport(MLX)
+    import MLX
+#endif
 import ScrubberKit
 import Storage
 import UIKit

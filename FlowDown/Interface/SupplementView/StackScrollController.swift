@@ -12,6 +12,9 @@ open class StackScrollController: UIViewController {
     public let contentView = UIView()
     public let stackView = UIStackView()
 
+    /// Groups each section's rows into a card; see `arrangeSectionsInCardsIfNeeded`.
+    var arrangesSectionsInCards = false
+
     override open func viewDidLoad() {
         super.viewDidLoad()
 
@@ -68,6 +71,11 @@ open class StackScrollController: UIViewController {
                     $0.widthAnchor.constraint(equalTo: stackView.widthAnchor),
                 ])
             }
+    }
+
+    override open func viewWillLayoutSubviews() {
+        super.viewWillLayoutSubviews()
+        arrangeSectionsInCardsIfNeeded()
     }
 
     open func setupContentViews() { /* stub */ }

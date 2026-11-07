@@ -10,8 +10,8 @@ import Storage
 import UIKit
 
 extension ConversationSelectionView {
-    /// One row of the sidebar: a folder, a conversation, or the placeholder
-    /// shown inside an expanded empty folder.
+    /// One row of the sidebar: a folder, a conversation, the placeholder
+    /// shown inside an expanded empty folder, or "Show More".
     ///
     /// Context menus, drag & drop and folder toggling are driven by the table
     /// view delegates. Opening a conversation needs the cell's own tap
@@ -264,6 +264,26 @@ extension ConversationSelectionView {
             } else {
                 chevronView.transform = target
             }
+            updateBackground()
+        }
+
+        func useShowMore() {
+            item = .showMore
+            selectionStyle = .none
+            chevronView.isHidden = true
+            countLabel.isHidden = true
+            iconView.isHidden = false
+            iconView.contentMode = .center
+            iconView.image = UIImage(
+                systemName: "ellipsis",
+                withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold),
+            )
+            titleLabel.textColor = .secondaryLabel
+            titleLabel.font = .preferredFont(forTextStyle: .subheadline)
+            titleLabel.text = String(localized: "Show More")
+            stackLeadingConstraint?.update(inset: Metrics.horizontalInset)
+            accessibilityTraits = .button
+            accessibilityValue = nil
             updateBackground()
         }
 

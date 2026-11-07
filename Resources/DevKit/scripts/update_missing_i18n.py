@@ -28,6 +28,30 @@ WELCOME_MESSAGE = (
 # Populate this map with explicit translations when introducing new keys.
 # Format: {"Key": {"zh-Hans": "示例", "es": "Ejemplo"}}
 NEW_STRINGS: dict[str, dict[str, str]] = {
+    "Adjust the font size of the markdown content. This only affects conversations; the rest of the app follows the system font size setting.": {
+        "de": "Passt die Schriftgröße der Markdown-Inhalte an. Gilt nur für Unterhaltungen; der Rest der App folgt der Schriftgröße des Systems.",
+        "es": "Ajusta el tamaño de fuente del contenido Markdown. Solo afecta a las conversaciones; el resto de la app sigue el tamaño de fuente del sistema.",
+        "fr": "Ajuste la taille de police du contenu Markdown. Ne s’applique qu’aux conversations ; le reste de l’app suit la taille de police du système.",
+        "ja": "Markdown コンテンツのフォントサイズを調整します。会話にのみ適用され、その他の画面はシステムのフォントサイズ設定に従います。",
+        "ko": "마크다운 콘텐츠의 글꼴 크기를 조정합니다. 대화에만 적용되며, 앱의 나머지 부분은 시스템 글꼴 크기 설정을 따릅니다.",
+        "zh-Hans": "调整标记文本的字体大小。仅对对话内容生效，其余界面遵循系统字体大小设置。",
+    },
+    "Forward": {
+        "de": "Vorwärts",
+        "es": "Adelante",
+        "fr": "Suivant",
+        "ja": "進む",
+        "ko": "앞으로",
+        "zh-Hans": "前进",
+    },
+    "Show More": {
+        "de": "Mehr anzeigen",
+        "es": "Mostrar más",
+        "fr": "Afficher plus",
+        "ja": "さらに表示",
+        "ko": "더 보기",
+        "zh-Hans": "加载更多",
+    },
     "Folders": {
         "de": "Ordner",
         "es": "Carpetas",

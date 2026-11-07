@@ -317,8 +317,8 @@ extension AppDelegate {
 
     /// The order the sidebar shows, as built by
     /// `ConversationSelectionView.updateDataSource`: favorites first, then the
-    /// rest. Both keep the creation-descending storage order, which the day
-    /// sections preserve, so menu navigation steps through the visible rows.
+    /// rest. Both keep the creation-descending storage order the recent list
+    /// uses, so menu navigation steps through the rows in sidebar order.
     static func sidebarOrderedIdentifiers(
         _ conversations: some Collection<Conversation>,
     ) -> [Conversation.ID] {

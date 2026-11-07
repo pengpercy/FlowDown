@@ -31,7 +31,7 @@ extension MarkdownTheme {
     static let configurableObject: ConfigurableObject = .init(
         icon: "wand.and.rays",
         title: "Font Size",
-        explain: "Adjust the font size of the markdown content.",
+        explain: "Adjust the font size of the markdown content. This only affects conversations; the rest of the app follows the system font size setting.",
         key: storageKey,
         defaultValue: MarkdownTheme.FontScale.middle.rawValue,
         annotation: .menu {

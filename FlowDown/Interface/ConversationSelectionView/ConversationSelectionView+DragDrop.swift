@@ -9,8 +9,8 @@ import Storage
 import UIKit
 
 /// Drag a conversation onto a folder row (or any row inside an expanded
-/// folder) to file it there; drop it anywhere in the unfiled list to take it
-/// out of its folder.
+/// folder) to file it there; drop it on the favorites or recent list to take
+/// it out of its folder.
 ///
 /// The drop target is resolved from the pointer location by section rather
 /// than from the table's insertion index path, which flips between rows and
@@ -133,13 +133,8 @@ extension ConversationSelectionView: UITableViewDragDelegate, UITableViewDropDel
             switch section {
             case .folders: return nil
             case let .folder(identifier): return .folder(identifier)
-            case .favorites, .date: return .unfiled
+            case .favorites, .recent: return .unfiled
             }
-        }
-        // Empty space below the last row belongs to the unfiled list, which
-        // keeps it reachable even when the list is short.
-        if let last = sections.indices.last, point.y >= tableView.rect(forSection: last).maxY {
-            return .unfiled
         }
         return nil
     }
@@ -177,21 +172,17 @@ extension ConversationSelectionView: UITableViewDragDelegate, UITableViewDropDel
         case .unfiled:
             let rects = sections.enumerated().compactMap { index, section -> CGRect? in
                 switch section {
-                case .favorites, .date: return tableView.rect(forSection: index)
+                case .favorites, .recent: return tableView.rect(forSection: index)
                 default: return nil
                 }
             }
-            let visible = tableView.bounds
-            guard var region = rects.first ?? sections.indices.last.map({
-                CGRect(x: 0, y: tableView.rect(forSection: $0).maxY, width: visible.width, height: 0)
-            }) else { return nil }
+            guard var region = rects.first else { return nil }
             for rect in rects.dropFirst() {
                 region = region.union(rect)
             }
-            // Extend over the empty space below the rows, then clip to what
-            // is on screen so the outline never runs past the visible list.
-            region.size.height = max(region.height, visible.maxY - region.minY)
-            return region.intersection(visible)
+            // Clip to what is on screen so the outline never runs past the
+            // visible list.
+            return region.intersection(tableView.bounds)
         }
     }
 
