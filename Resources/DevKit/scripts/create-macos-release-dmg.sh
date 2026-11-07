@@ -52,6 +52,19 @@ STAGE=$(mktemp -d)
 APP_NAME=$(basename "${APP_PATH}")
 ditto "${APP_PATH}" "${STAGE}/${APP_NAME}"
 xattr -cr "${STAGE}/${APP_NAME}"
+
+# Sparkle installs updates: it compares CFBundleVersion against the feed's
+# sparkle:version, so the build number carries the release version, and its
+# installer runs as an XPC service the sandbox must be allowed to reach.
+./Resources/DevKit/scripts/embed-sparkle.sh "${STAGE}/${APP_NAME}"
+INFO="${STAGE}/${APP_NAME}/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${VERSION}" "${INFO}"
+BUNDLE_ID=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "${INFO}")
+/usr/libexec/PlistBuddy \
+    -c "Add :com.apple.security.temporary-exception.mach-lookup.global-name array" \
+    -c "Add :com.apple.security.temporary-exception.mach-lookup.global-name:0 string ${BUNDLE_ID}-spks" \
+    -c "Add :com.apple.security.temporary-exception.mach-lookup.global-name:1 string ${BUNDLE_ID}-spki" \
+    "${ENTITLEMENTS}"
 while IFS= read -r nested; do
     codesign --force --sign - --timestamp=none "${nested}"
 done < <(find "${STAGE}/${APP_NAME}/Contents/Frameworks" -name '*.dylib' -o -name '*.framework' | sort)

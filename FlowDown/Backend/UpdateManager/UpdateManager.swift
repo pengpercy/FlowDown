@@ -55,7 +55,7 @@ struct GitHubReleaseFeedClient: ReleaseFeedClient {
 
     init(
         session: URLSessioning = URLSession.shared,
-        latestReleaseURL: URL = URL(string: "https://api.github.com/repos/Lakr233/FlowDown/releases/latest")!,
+        latestReleaseURL: URL = URL(string: "https://api.github.com/repos/pengpercy/FlowDown/releases/latest")!,
     ) {
         self.session = session
         self.latestReleaseURL = latestReleaseURL
@@ -152,7 +152,21 @@ class UpdateManager: NSObject {
         anchorView = view
     }
 
+    /// Starts automatic update checks when Sparkle ships in the app.
+    func startAutomaticChecks() {
+        guard canCheckForUpdates else { return }
+        #if targetEnvironment(macCatalyst)
+            SparkleUpdater.shared?.start()
+        #endif
+    }
+
     func performUpdateCheckFromUI() {
+        #if targetEnvironment(macCatalyst)
+            if canCheckForUpdates, let sparkle = SparkleUpdater.shared {
+                sparkle.checkForUpdates()
+                return
+            }
+        #endif
         guard let controller = anchorView?.parentViewController else {
             Logger.app.errorFile("no anchor view set for UpdateManager.")
             return
