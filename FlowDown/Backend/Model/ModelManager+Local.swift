@@ -9,7 +9,9 @@ import Combine
 import CryptoKit
 import Digger
 import Foundation
-import MLX
+#if canImport(MLX)
+    import MLX
+#endif
 import Storage
 import ZIPFoundation
 

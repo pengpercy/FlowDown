@@ -8,7 +8,9 @@
 import Combine
 import ConfigurableKit
 import FlowDownModelExchange
-import MLX
+#if canImport(MLX)
+    import MLX
+#endif
 import Storage
 import UIKit
 

@@ -9,7 +9,9 @@ import ChatClientKit
 import Foundation
 import FoundationModels
 import GPTEncoder
-import MLX
+#if canImport(MLX)
+    import MLX
+#endif
 import Storage
 import UIKit
 
@@ -217,11 +219,18 @@ extension ModelManager {
             // Callers should explicitly merge bodyFields if needed
             return makeCloudChatService(for: model, additionalBodyField: additionalBodyField)
         } else if let model = localModel(identifier: identifier) {
-            let preferredKind: MLXModelKind = model.capabilities.contains(.visual) ? .vlm : .llm
-            return MLXChatClient(
-                url: modelContent(for: model),
-                preferredKind: preferredKind,
-            )
+            #if canImport(MLX)
+                let preferredKind: MLXModelKind = model.capabilities.contains(.visual) ? .vlm : .llm
+                return MLXChatClient(
+                    url: modelContent(for: model),
+                    preferredKind: preferredKind,
+                )
+            #else
+                _ = model
+                throw NSError(domain: "MLX", code: 2, userInfo: [
+                    NSLocalizedDescriptionKey: String(localized: "Your device does not support MLX."),
+                ])
+            #endif
         } else {
             throw NSError(
                 domain: "Model",

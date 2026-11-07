@@ -8,7 +8,9 @@
 import AlertController
 import ChatClientKit
 import ConfigurableKit
-import MLX
+#if canImport(MLX)
+    import MLX
+#endif
 import UIKit
 
 extension SettingController.SettingContent {

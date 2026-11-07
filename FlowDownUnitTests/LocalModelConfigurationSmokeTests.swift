@@ -1,3 +1,5 @@
+#if canImport(MLXLMCommon)
+
 @testable import FlowDown
 import Foundation
 import MLXLLM
@@ -53,3 +55,5 @@ struct LocalModelConfigurationSmokeTests {
         #expect(ToolCallFormat.allCases.contains(.xmlFunction))
     }
 }
+
+#endif

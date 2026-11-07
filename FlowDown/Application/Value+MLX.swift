@@ -8,7 +8,9 @@
 import Combine
 import ConfigurableKit
 import Foundation
-import MLX
+#if canImport(MLX)
+    import MLX
+#endif
 import UIKit
 
 extension MLX.GPU {
@@ -52,7 +54,7 @@ extension MLX.GPU {
     )
 
     static func subscribeToConfigurableItem() {
-        #if targetEnvironment(simulator) || arch(x86_64)
+        #if targetEnvironment(simulator) || arch(x86_64) || !canImport(MLX)
             return
         #else
             assert(cancellables.isEmpty)

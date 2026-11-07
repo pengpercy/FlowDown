@@ -19,7 +19,4 @@
    <FileRef
       location = "group:Frameworks/FlowDownModelExchange">
    </FileRef>
-   <FileRef
-      location = "group:Frameworks/mlx-swift-lm">
-   </FileRef>
 </Workspace>

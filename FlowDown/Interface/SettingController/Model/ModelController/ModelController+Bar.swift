@@ -7,7 +7,9 @@
 
 import AlertController
 import ConfigurableKit
-import MLX
+#if canImport(MLX)
+    import MLX
+#endif
 import Storage
 import UIKit
 import UniformTypeIdentifiers

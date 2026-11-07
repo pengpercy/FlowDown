@@ -8,7 +8,9 @@
 import ConfigurableKit
 @_exported import Foundation
 @_exported import Logger
-import MLX
+#if canImport(MLX)
+    import MLX
+#endif
 @_exported import SnapKit
 import Storage
 @_exported import SwifterSwift
@@ -39,7 +41,7 @@ private func boot() throws -> Never {
         ConfigurableKit.storage = UserDefaultKeyValueStorage(suite: .standard, prefix: "in-house.")
     #endif
 
-    #if targetEnvironment(simulator) || arch(x86_64)
+    #if targetEnvironment(simulator) || arch(x86_64) || !canImport(MLX)
         ConfigurableKit.set(value: false, forKey: MLX.GPU.isSupportedKey)
         assert(!MLX.GPU.isSupported)
     #else
