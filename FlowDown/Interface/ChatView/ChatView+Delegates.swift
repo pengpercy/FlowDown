@@ -36,9 +36,7 @@ extension ChatView: RichEditorView.Delegate {
           }
           context.addAction(title: "Add Model", attribute: .accent) {
             context.dispose {
-              SettingController.setNextEntryPage(.modelManagement)
-              let setting = SettingController()
-              self.parentViewController?.present(setting, animated: true)
+              SettingController.open(.modelManagement, from: self.parentViewController)
             }
           }
         }
@@ -104,9 +102,7 @@ extension ChatView: RichEditorView.Delegate {
       }
       context.addAction(title: "Configure", attribute: .accent) { [weak self] in
         context.dispose { [weak self] in
-          SettingController.setNextEntryPage(.modelManagement)
-          let setting = SettingController()
-          self?.parentViewController?.present(setting, animated: true)
+          SettingController.open(.modelManagement, from: self?.parentViewController)
         }
       }
     }
@@ -328,9 +324,7 @@ extension ChatView: RichEditorView.Delegate {
           title: String(localized: "Settings"),
           image: UIImage(systemName: "gear"),
         ) { [weak self] _ in
-          SettingController.setNextEntryPage(.mcp)
-          let settingController = SettingController()
-          self?.parentViewController?.present(settingController, animated: true)
+          SettingController.open(.mcp, from: self?.parentViewController)
         },
       )
 

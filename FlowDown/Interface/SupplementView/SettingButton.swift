@@ -24,7 +24,6 @@ class SettingButton: UIButton {
 
     @objc func buttonAction() {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        let controller = SettingController()
-        parentViewController?.present(controller, animated: true)
+        SettingController.open(from: parentViewController)
     }
 }

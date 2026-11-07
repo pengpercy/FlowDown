@@ -49,15 +49,27 @@ class ConversationSelectionView: UIView {
         case folder(ConversationFolder.ID)
         /// Shown inside an expanded folder that holds no conversations.
         case folderPlaceholder(ConversationFolder.ID)
+        /// Ends the recent list while older conversations are hidden.
+        case showMore
     }
 
+    /// Top to bottom: favorites, the most recent unfiled conversations, then
+    /// the folders.
     enum SectionIdentifier: Hashable {
+        case favorites
+        case recent
         /// Header-only section carrying the "Folders" title and add button.
         case folders
         case folder(ConversationFolder.ID)
-        case favorites
-        case date(Date)
     }
+
+    /// How many recent conversations show before "Show More", and how many
+    /// more each click on it reveals.
+    static let recentPageSize = 10
+
+    /// Recent conversations currently shown. Grows with "Show More", and to
+    /// reach a selected conversation that would otherwise stay hidden.
+    var recentLimit = ConversationSelectionView.recentPageSize
 
     typealias DataSource = UITableViewDiffableDataSource<SectionIdentifier, DataIdentifier>
     typealias Snapshot = NSDiffableDataSourceSnapshot<SectionIdentifier, DataIdentifier>
@@ -91,6 +103,8 @@ class ConversationSelectionView: UIView {
                 )
             case let .folderPlaceholder(identifier):
                 cell.usePlaceholder(folder: identifier)
+            case .showMore:
+                cell.useShowMore()
             }
             return cell
         }
@@ -123,8 +137,8 @@ class ConversationSelectionView: UIView {
         tableView.showsVerticalScrollIndicator = false
         tableView.showsHorizontalScrollIndicator = false
         tableView.sectionHeaderTopPadding = 0
-        tableView.sectionHeaderHeight = SectionDateHeaderView.height
-        tableView.estimatedSectionHeaderHeight = SectionDateHeaderView.height
+        tableView.sectionHeaderHeight = SectionHeaderView.height
+        tableView.estimatedSectionHeaderHeight = SectionHeaderView.height
         tableView.sectionFooterHeight = 0
         tableView.estimatedSectionFooterHeight = 0
 
@@ -180,11 +194,15 @@ class ConversationSelectionView: UIView {
         if let identifier,
            identifier != lastRevealedSelection,
            dataSource.indexPath(for: .conversation(identifier)) == nil,
-           ConversationManager.shared.conversation(identifier: identifier) != nil,
-           let folderId = ConversationManager.shared.folderMemberships.value[identifier],
-           !expandedFolderIds.contains(folderId)
+           ConversationManager.shared.conversation(identifier: identifier) != nil
         {
-            expandFolder(folderId)
+            if let folderId = ConversationManager.shared.folderMemberships.value[identifier] {
+                if !expandedFolderIds.contains(folderId) { expandFolder(folderId) }
+            } else {
+                // An older conversation past "Show More" (from search or the
+                // previous/next commands): reveal pages until it shows.
+                revealRecent(identifier)
+            }
         }
 
         if let identifier,
@@ -259,6 +277,25 @@ class ConversationSelectionView: UIView {
         expandedFolderIds.formIntersection(folders.map(\.id))
         let unfiled = list.filter { memberships[$0.id] == nil }
 
+        let favorited = unfiled.filter(\.isFavorite)
+        if !favorited.isEmpty {
+            snapshot.appendSections([.favorites])
+            snapshot.appendItems(favorited.map { .conversation($0.id) }, toSection: .favorites)
+        }
+
+        // Newest first, as storage already orders them.
+        let recent = unfiled.filter { !$0.isFavorite }
+        if !recent.isEmpty {
+            snapshot.appendSections([.recent])
+            snapshot.appendItems(
+                recent.prefix(recentLimit).map { .conversation($0.id) },
+                toSection: .recent,
+            )
+            if recent.count > recentLimit {
+                snapshot.appendItems([.showMore], toSection: .recent)
+            }
+        }
+
         snapshot.appendSections([.folders])
         for folder in folders {
             let section = SectionIdentifier.folder(folder.id)
@@ -270,28 +307,6 @@ class ConversationSelectionView: UIView {
                 snapshot.appendItems([.folderPlaceholder(folder.id)], toSection: section)
             } else {
                 snapshot.appendItems(members.map { .conversation($0.id) }, toSection: section)
-            }
-        }
-
-        let favorited = unfiled.filter(\.isFavorite)
-        if !favorited.isEmpty {
-            snapshot.appendSections([.favorites])
-            snapshot.appendItems(favorited.map { .conversation($0.id) }, toSection: .favorites)
-        }
-
-        let calendar = Calendar.current
-
-        var conversationsByDate: [Date: [Conversation.ID]] = [:]
-        for item in unfiled where !item.isFavorite {
-            let dateOnly = calendar.startOfDay(for: item.creation)
-            conversationsByDate[dateOnly, default: []].append(item.id)
-        }
-
-        for date in conversationsByDate.keys.sorted(by: >) {
-            let section = SectionIdentifier.date(date)
-            snapshot.appendSections([section])
-            if let conversations = conversationsByDate[date] {
-                snapshot.appendItems(conversations.map { .conversation($0) }, toSection: section)
             }
         }
 
@@ -325,6 +340,24 @@ class ConversationSelectionView: UIView {
     func expandFolder(_ identifier: ConversationFolder.ID) {
         guard !expandedFolderIds.contains(identifier) else { return }
         toggleFolder(identifier)
+    }
+
+    func showMoreRecent() {
+        recentLimit += Self.recentPageSize
+        updateDataSource()
+    }
+
+    /// Grows the recent list by whole pages until `identifier` is in it.
+    private func revealRecent(_ identifier: Conversation.ID) {
+        let recent = ConversationManager.shared.conversations.value.values.filter {
+            !$0.isFavorite && ConversationManager.shared.folderMemberships.value[$0.id] == nil
+        }
+        guard let index = recent.firstIndex(where: { $0.id == identifier }),
+              index >= recentLimit
+        else { return }
+        let pages = index / Self.recentPageSize + 1
+        recentLimit = pages * Self.recentPageSize
+        updateDataSource()
     }
 
     static func replacementSelection(

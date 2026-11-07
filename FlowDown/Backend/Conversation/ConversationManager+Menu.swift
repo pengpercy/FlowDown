@@ -270,11 +270,10 @@ extension ConversationManager {
                                             }
                                             context.addAction(title: "Edit", attribute: .accent) {
                                                 context.dispose {
-                                                    let setting = SettingController()
-                                                    SettingController.setNextEntryPage(
-                                                        .chatTemplateEditor(templateIdentifier: template.id)
+                                                    SettingController.open(
+                                                        .chatTemplateEditor(templateIdentifier: template.id),
+                                                        from: controller,
                                                     )
-                                                    controller.present(setting, animated: true)
                                                 }
                                             }
                                         }
