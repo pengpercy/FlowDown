@@ -17,6 +17,7 @@ rm -rf "$APP"
 mkdir -p "$WORK_DIR"
 ditto "$BUILT_APP" "$APP"
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" "$APP/Contents/Info.plist"
+"$SCRIPTS/embed-sparkle.sh" "$APP"
 "$SCRIPTS/sign-catalyst-local.sh" "$APP"
 
 if [ "${REAL_DATA:-0}" = "1" ]; then

@@ -27,6 +27,11 @@ jobs:
     env:
       VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version || github.ref_name }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
       - name: Find Matching Prebuild
         id: prebuild
         env:
@@ -53,6 +58,46 @@ jobs:
           gh run download "${RUN_ID}" --repo "${GITHUB_REPOSITORY}" --name macos-release-dmg-arm64 --dir dist
           gh run download "${RUN_ID}" --repo "${GITHUB_REPOSITORY}" --name macos-release-dmg-x86_64 --dir dist
 
+      - name: Collect Release Notes
+        run: |
+          set -euo pipefail
+          PREVIOUS=$(git describe --tags --abbrev=0 "${GITHUB_SHA}^" 2>/dev/null || true)
+          git log --no-merges --format=%s ${PREVIOUS:+"${PREVIOUS}..${GITHUB_SHA}"} \
+            | grep -vE '^Prepare .* Release$' > changes.txt || true
+          cat changes.txt
+
+      # Sparkle in the installed app reads appcast-<arch>.xml from the latest
+      # release and accepts a DMG only with an EdDSA signature that matches
+      # SUPublicEDKey in Info-Catalyst.plist.
+      - name: Sign Updates And Write Appcasts
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${SPARKLE_ED_PRIVATE_KEY}" || { echo "SPARKLE_ED_PRIVATE_KEY is not set" >&2; exit 1; }
+          KEY_DIR=$(mktemp -d)
+          { printf '302e020100300506032b657004220420' | xxd -r -p
+            printf '%s' "${SPARKLE_ED_PRIVATE_KEY}" | base64 -d; } > "${KEY_DIR}/key.der"
+          openssl pkey -inform DER -in "${KEY_DIR}/key.der" -out "${KEY_DIR}/key.pem"
+          PUBLIC=$(openssl pkey -in "${KEY_DIR}/key.pem" -pubout -outform DER | tail -c 32 | base64 -w0)
+          EXPECTED=$(sed -n '/<key>SUPublicEDKey<\/key>/{n;s/.*<string>\(.*\)<\/string>.*/\1/p}' \
+            FlowDown/Resources/InfoPlist/Info-Catalyst.plist)
+          test "${PUBLIC}" = "${EXPECTED}" || { echo "signing key does not match SUPublicEDKey" >&2; exit 1; }
+
+          for ARCH in arm64 x86_64; do
+            DMG=$(find dist -name "FlowDown-${VERSION}-${ARCH}.dmg" -print -quit)
+            test -n "${DMG}"
+            SIGNATURE=$(openssl pkeyutl -sign -inkey "${KEY_DIR}/key.pem" -rawin -in "${DMG}" | base64 -w0)
+            python3 -I Resources/DevKit/scripts/make_sparkle_appcast.py \
+              --version "${VERSION}" \
+              --url "https://github.com/${GITHUB_REPOSITORY}/releases/download/${VERSION}/$(basename "${DMG}")" \
+              --length "$(stat -c %s "${DMG}")" \
+              --signature "${SIGNATURE}" \
+              --notes changes.txt \
+              --output "dist/appcast-${ARCH}.xml"
+          done
+          rm -rf "${KEY_DIR}"
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -65,6 +110,14 @@ jobs:
 
           {
             echo "Unsigned ${VERSION} Mac Catalyst builds from ${GITHUB_SHA}."
+            echo
+            if [[ -s changes.txt ]]; then
+              echo "## What's Changed"
+              echo
+              sed 's/^/- /' changes.txt
+              echo
+            fi
+            echo "From 5.2.9 on, FlowDown finds updates here and installs them itself (FlowDown > Check for Updates...)."
             echo
             echo "| File | CPU |"
             echo "| --- | --- |"
@@ -88,4 +141,6 @@ jobs:
             --title "FlowDown ${VERSION}" \
             --notes-file notes.md \
             "${ARM_DMG}" \
-            "${INTEL_DMG}"
+            "${INTEL_DMG}" \
+            dist/appcast-arm64.xml \
+            dist/appcast-x86_64.xml

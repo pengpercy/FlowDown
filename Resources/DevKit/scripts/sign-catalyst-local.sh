@@ -1,7 +1,8 @@
 #!/bin/zsh
 # Ad-hoc signs a Debug Catalyst app with only the entitlements it needs to run
 # on a Mac without the team's provisioning profile: the sandbox, network and
-# user-selected files, plus get-task-allow so a debugger can attach.
+# user-selected files, plus get-task-allow so a debugger can attach, and the
+# Sparkle installer service lookups.
 
 set -euo pipefail
 
@@ -24,6 +25,13 @@ cat >"$ENTITLEMENTS" <<'PLIST'
 </dict>
 </plist>
 PLIST
+
+BUNDLE_ID=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Contents/Info.plist")
+/usr/libexec/PlistBuddy \
+    -c "Add :com.apple.security.temporary-exception.mach-lookup.global-name array" \
+    -c "Add :com.apple.security.temporary-exception.mach-lookup.global-name:0 string $BUNDLE_ID-spks" \
+    -c "Add :com.apple.security.temporary-exception.mach-lookup.global-name:1 string $BUNDLE_ID-spki" \
+    "$ENTITLEMENTS"
 
 rm -rf "$APP/Contents/PlugIns" "$APP/Contents/Extensions"
 find "$APP/Contents" \( -name "*.dylib" -o -name "*.framework" \) -prune -print0 |

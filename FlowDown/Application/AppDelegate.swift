@@ -91,6 +91,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             }
         }
 
+        UpdateManager.shared.startAutomaticChecks()
+
         return true
     }
 
