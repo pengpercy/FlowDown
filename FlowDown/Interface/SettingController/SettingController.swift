@@ -27,12 +27,27 @@ import UIKit
                     input: "[",
                     modifierFlags: .command,
                 ),
+                UIKeyCommand(
+                    title: String(localized: "Forward"),
+                    action: #selector(goForward),
+                    input: "]",
+                    modifierFlags: .command,
+                ),
             ]
         }
 
         private(set) var content: SplitController!
 
         private var sheetSizingConstraints: [NSLayoutConstraint] = []
+
+        /// Height of the band along the top of the sheet that drags it, the
+        /// same as the pane's navigation bar.
+        private static let dragBandHeight: CGFloat = 52
+
+        /// How far the sheet has been dragged from the center of the window.
+        private var dragOffset: CGPoint = .zero
+        private var centerXConstraint: NSLayoutConstraint?
+        private var centerYConstraint: NSLayoutConstraint?
 
         override convenience init() {
             let split = SplitController()
@@ -56,8 +71,14 @@ import UIKit
             }
         }
 
+        override func viewDidLoad() {
+            super.viewDidLoad()
+            installDragging()
+        }
+
         override func viewWillLayoutSubviews() {
             super.viewWillLayoutSubviews()
+            clampDragOffset()
             // Size against the window the sheet is actually presented into,
             // refreshing on every pass so a live window resize is followed.
             guard let window = view.window else { return }
@@ -92,6 +113,67 @@ import UIKit
             _ = content.popDetail()
         }
 
+        @objc private func goForward() {
+            guard presentedViewController == nil else { return }
+            content.forwardDetail()
+        }
+
+        override func dimmingViewTapped() {
+            // The base class nudges the sheet with a transform, which would
+            // fight the drag offset; a click outside simply does nothing.
+        }
+
+        // MARK: - Dragging
+
+        /// Lets the sheet be dragged by its top band, like a window by its
+        /// title bar, while staying inside the main window.
+        private func installDragging() {
+            // Replace the base class's fixed centering with centering that
+            // carries the drag offset. It sits below the required edge
+            // constraints, which keep the sheet inside the window.
+            for constraint in view.constraints where constraint.firstItem === contentView
+                && (constraint.firstAttribute == .centerX || constraint.firstAttribute == .centerY)
+            {
+                constraint.isActive = false
+            }
+            let centerX = contentView.centerXAnchor.constraint(equalTo: contentLayoutGuide.centerXAnchor)
+            let centerY = contentView.centerYAnchor.constraint(equalTo: contentLayoutGuide.centerYAnchor)
+            centerX.priority = .defaultHigh
+            centerY.priority = .defaultHigh
+            NSLayoutConstraint.activate([centerX, centerY])
+            centerXConstraint = centerX
+            centerYConstraint = centerY
+
+            let pan = UIPanGestureRecognizer(target: self, action: #selector(handleDrag(_:)))
+            pan.delegate = self
+            contentView.addGestureRecognizer(pan)
+        }
+
+        @objc private func handleDrag(_ recognizer: UIPanGestureRecognizer) {
+            guard recognizer.state == .changed else { return }
+            let translation = recognizer.translation(in: view)
+            recognizer.setTranslation(.zero, in: view)
+            dragOffset.x += translation.x
+            dragOffset.y += translation.y
+            clampDragOffset()
+            view.layoutIfNeeded()
+        }
+
+        /// Keeps the offset within the room the window leaves around the
+        /// sheet, so a smaller window pulls a dragged sheet back into view.
+        private func clampDragOffset() {
+            let guide = contentLayoutGuide.layoutFrame
+            let size = contentView.bounds.size
+            if guide.width > 0, size.width > 0 {
+                let roomX = max(0, (guide.width - size.width) / 2)
+                let roomY = max(0, (guide.height - size.height) / 2)
+                dragOffset.x = min(max(dragOffset.x, -roomX), roomX)
+                dragOffset.y = min(max(dragOffset.y, -roomY), roomY)
+            }
+            centerXConstraint?.constant = dragOffset.x
+            centerYConstraint?.constant = dragOffset.y
+        }
+
         /// The pane list beside the selected pane.
         class SplitController: UISplitViewController {
             var onClose: (() -> Void)? {
@@ -100,7 +182,7 @@ import UIKit
             }
 
             private let sidebar = SidebarController()
-            private let detail = UINavigationController()
+            private let detail = DetailNavigationController()
             private var paneRoots: [Pane: UIViewController] = [:]
 
             init() {
@@ -166,7 +248,7 @@ import UIKit
                 sidebar.select(pane)
                 let root = paneRoots[pane] ?? pane.makeController()
                 paneRoots[pane] = root
-                detail.setViewControllers([root], animated: false)
+                detail.reset(to: root)
             }
 
             /// Steps back one page in the selected pane; false at its root.
@@ -174,9 +256,119 @@ import UIKit
                 guard detail.presentedViewController == nil,
                       detail.viewControllers.count > 1
                 else { return false }
-                detail.popViewController(animated: true)
+                detail.goBack()
                 return true
             }
+
+            func forwardDetail() {
+                guard detail.presentedViewController == nil else { return }
+                detail.goForward()
+            }
+        }
+
+        /// The pane's page stack, with back and forward arrows in place of
+        /// the titled back button, as in a Mac settings window.
+        class DetailNavigationController: UINavigationController, UINavigationControllerDelegate {
+            /// Pages left with Back, newest last, so Forward can return.
+            private var forwardStack: [UIViewController] = []
+            private var isGoingForward = false
+
+            init() {
+                super.init(nibName: nil, bundle: nil)
+                delegate = self
+            }
+
+            @available(*, unavailable)
+            required init?(coder _: NSCoder) {
+                fatalError()
+            }
+
+            func reset(to root: UIViewController) {
+                forwardStack.removeAll()
+                setViewControllers([root], animated: false)
+                updateArrows()
+            }
+
+            func goBack() {
+                guard viewControllers.count > 1 else { return }
+                popViewController(animated: true)
+            }
+
+            func goForward() {
+                guard let next = forwardStack.popLast() else { return }
+                isGoingForward = true
+                pushViewController(next, animated: true)
+                isGoingForward = false
+            }
+
+            override func pushViewController(_ viewController: UIViewController, animated: Bool) {
+                // Opening a new page ends the forward history, as in a browser.
+                if !isGoingForward { forwardStack.removeAll() }
+                super.pushViewController(viewController, animated: animated)
+                updateArrows()
+            }
+
+            @discardableResult
+            override func popViewController(animated: Bool) -> UIViewController? {
+                let popped = super.popViewController(animated: animated)
+                if let popped { forwardStack.append(popped) }
+                updateArrows()
+                return popped
+            }
+
+            func navigationController(_: UINavigationController, willShow viewController: UIViewController, animated _: Bool) {
+                updateArrows(on: viewController)
+            }
+
+            func navigationController(_: UINavigationController, didShow _: UIViewController, animated _: Bool) {
+                // A cancelled interactive pop leaves its page on the stack.
+                forwardStack.removeAll { viewControllers.contains($0) }
+                updateArrows()
+            }
+
+            private func updateArrows(on page: UIViewController? = nil) {
+                guard let page = page ?? topViewController else { return }
+                let item = page.navigationItem
+                // Pages that hide Back (an editor saved only by Done) or put
+                // their own control there keep it.
+                let ownsLeadingItems = item.leftBarButtonItems?.contains { $0.tag == Self.arrowTag } ?? true
+                guard ownsLeadingItems, !(item.hidesBackButton && item.leftBarButtonItems == nil) else { return }
+
+                let canGoBack = (viewControllers.firstIndex(of: page) ?? 0) > 0
+                let back = UIBarButtonItem(
+                    image: UIImage(systemName: "chevron.left"),
+                    primaryAction: UIAction { [weak self] _ in self?.goBack() },
+                )
+                back.isEnabled = canGoBack
+                back.accessibilityLabel = String(localized: "Back")
+                let forward = UIBarButtonItem(
+                    image: UIImage(systemName: "chevron.right"),
+                    primaryAction: UIAction { [weak self] _ in self?.goForward() },
+                )
+                forward.isEnabled = page === topViewController && !forwardStack.isEmpty
+                forward.accessibilityLabel = String(localized: "Forward")
+                for arrow in [back, forward] {
+                    arrow.tag = Self.arrowTag
+                    arrow.tintColor = .label
+                }
+                item.hidesBackButton = true
+                item.leftItemsSupplementBackButton = false
+                item.leftBarButtonItems = [back, forward]
+            }
+
+            private static let arrowTag = 0x46_44_4E_56
+        }
+    }
+    extension SettingController: UIGestureRecognizerDelegate {
+        func gestureRecognizer(_: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+            // Only the top band drags, and never from a button in it.
+            guard touch.location(in: contentView).y < Self.dragBandHeight else { return false }
+            var view = touch.view
+            while let current = view, current !== contentView {
+                if current is UIControl { return false }
+                view = current.superview
+            }
+            return true
         }
     }
 #else
