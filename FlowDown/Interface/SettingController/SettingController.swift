@@ -38,11 +38,13 @@ import UIKit
 
         private(set) var content: SplitController!
 
+        private let trafficLights = TrafficLightsView()
+
         private var sheetSizingConstraints: [NSLayoutConstraint] = []
 
         /// Height of the band along the top of the sheet that drags it, the
         /// same as the pane's navigation bar.
-        private static let dragBandHeight: CGFloat = 52
+        static let dragBandHeight: CGFloat = 52
 
         /// How far the sheet has been dragged from the center of the window.
         private var dragOffset: CGPoint = .zero
@@ -63,9 +65,6 @@ import UIKit
             shouldDismissWhenTappedAround = false
             shouldDismissWhenEscapeKeyPressed = true
 
-            split.onClose = { [weak self] in
-                self?.dismiss(animated: true)
-            }
             if let entry = SettingController.getNextEntryPage() {
                 split.show(entry: entry)
             }
@@ -74,6 +73,22 @@ import UIKit
         override func viewDidLoad() {
             super.viewDidLoad()
             installDragging()
+
+            // Above both columns, so neither column's bar can cover them,
+            // and centered in the top band as in a window's toolbar.
+            trafficLights.onClose = { [weak self] in
+                self?.dismiss(animated: true)
+            }
+            contentView.addSubview(trafficLights)
+            trafficLights.snp.makeConstraints { make in
+                make.leading.equalToSuperview().inset(20)
+                make.centerY.equalTo(contentView.snp.top).offset(Self.dragBandHeight / 2)
+            }
+        }
+
+        override func viewDidLayoutSubviews() {
+            super.viewDidLayoutSubviews()
+            contentView.bringSubviewToFront(trafficLights)
         }
 
         override func viewWillLayoutSubviews() {
@@ -176,12 +191,7 @@ import UIKit
 
         /// The pane list beside the selected pane.
         class SplitController: UISplitViewController {
-            var onClose: (() -> Void)? {
-                get { sidebar.onClose }
-                set { sidebar.onClose = newValue }
-            }
-
-            private let sidebar = SidebarController()
+            let sidebar = SidebarController()
             private let detail = DetailNavigationController()
             private var paneRoots: [Pane: UIViewController] = [:]
 
@@ -197,6 +207,19 @@ import UIKit
 
                 detail.navigationBar.prefersLargeTitles = false
                 detail.view.backgroundColor = .background
+                // The bar reads as part of the pane, with its title beside
+                // the arrows, as in a Mac settings window's toolbar.
+                let appearance = UINavigationBarAppearance()
+                appearance.configureWithOpaqueBackground()
+                appearance.backgroundColor = .background
+                appearance.shadowColor = .clear
+                appearance.titleTextAttributes = [
+                    .font: UIFont.preferredFont(forTextStyle: .title3).bold,
+                    .foregroundColor: UIColor.label,
+                ]
+                detail.navigationBar.standardAppearance = appearance
+                detail.navigationBar.scrollEdgeAppearance = appearance
+                detail.navigationBar.compactAppearance = appearance
 
                 setViewController(sidebar, for: .primary)
                 setViewController(detail, for: .secondary)
@@ -318,6 +341,11 @@ import UIKit
 
             func navigationController(_: UINavigationController, willShow viewController: UIViewController, animated _: Bool) {
                 updateArrows(on: viewController)
+                // Group each section's rows into a card, as Mac settings do.
+                if let page = viewController as? StackScrollController, !page.arrangesSectionsInCards {
+                    page.arrangesSectionsInCards = true
+                    page.view.setNeedsLayout()
+                }
             }
 
             func navigationController(_: UINavigationController, didShow _: UIViewController, animated _: Bool) {
@@ -354,6 +382,7 @@ import UIKit
                 item.hidesBackButton = true
                 item.leftItemsSupplementBackButton = false
                 item.leftBarButtonItems = [back, forward]
+                item.style = .browser
             }
 
             private static let arrowTag = 0x46_44_4E_56
@@ -361,8 +390,18 @@ import UIKit
     }
     extension SettingController: UIGestureRecognizerDelegate {
         func gestureRecognizer(_: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
-            // Only the top band drags, and never from a button in it.
-            guard touch.location(in: contentView).y < Self.dragBandHeight else { return false }
+            // The top band drags, and so does the sidebar's empty space, but
+            // never from a button.
+            let sidebar = content.sidebar
+            let inSidebar = sidebar.isViewLoaded
+                && sidebar.view.bounds.contains(touch.location(in: sidebar.view))
+            if inSidebar {
+                guard touch.location(in: contentView).y < Self.dragBandHeight
+                    || sidebar.isEmptySpace(at: touch.location(in: sidebar.view))
+                else { return false }
+            } else {
+                guard touch.location(in: contentView).y < Self.dragBandHeight else { return false }
+            }
             var view = touch.view
             while let current = view, current !== contentView {
                 if current is UIControl { return false }
