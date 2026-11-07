@@ -497,7 +497,7 @@
 				506373A42EC0DC7900C8A9FB /* XCRemoteSwiftPackageReference "ColorfulX" */,
 				50AE757C2EF436FC00D2C845 /* XCRemoteSwiftPackageReference "swift-collections" */,
 				509038602FB0EB8500110DDB /* XCRemoteSwiftPackageReference "iCalendarParser" */,
-				5081A0152FC5A1B200079ECB /* XCRemoteSwiftPackageReference "Runestone.xcframework" */,
+				5081A0152FC5A1B200079ECB /* XCRemoteSwiftPackageReference "Runestone" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 503498BE2D23053D004672BD /* Products */;
@@ -670,7 +670,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				AUTOMATION_APPLE_EVENTS = NO;
 				CODE_SIGN_ENTITLEMENTS = "FlowDown/Resources/Entitlements/Entitlements-iOS.entitlements";
-				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "FlowDown/Resources/Entitlements/Entitlements-Catalyst.entitlements";
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "$(FLOWDOWN_CATALYST_ENTITLEMENTS)";
 				CODE_SIGN_IDENTITY = "$(inherited)";
 				CODE_SIGN_STYLE = "$(inherited)";
 				CURRENT_PROJECT_VERSION = "$(inherited)";
@@ -754,7 +754,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				AUTOMATION_APPLE_EVENTS = NO;
 				CODE_SIGN_ENTITLEMENTS = "FlowDown/Resources/Entitlements/Entitlements-iOS.entitlements";
-				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "FlowDown/Resources/Entitlements/Entitlements-Catalyst.entitlements";
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "$(FLOWDOWN_CATALYST_ENTITLEMENTS)";
 				CODE_SIGN_IDENTITY = "$(inherited)";
 				CODE_SIGN_STYLE = "$(inherited)";
 				CURRENT_PROJECT_VERSION = "$(inherited)";
@@ -1202,6 +1202,14 @@
 				minimumVersion = 6.1.0;
 			};
 		};
+		5081A0152FC5A1B200079ECB /* XCRemoteSwiftPackageReference "Runestone" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/Lakr233/Runestone.xcframework";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.2.0;
+			};
+		};
 		509038602FB0EB8500110DDB /* XCRemoteSwiftPackageReference "iCalendarParser" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/dmail-me/iCalendarParser";
@@ -1215,7 +1223,7 @@
 			repositoryURL = "https://github.com/pengpercy/MarkdownView";
 			requirement = {
 				kind = exactVersion;
-				version = 4.8.5-flowdown.1;
+				version = "4.8.5-flowdown.1";
 			};
 		};
 		50A350BA2F20A00000B1F430 /* XCRemoteSwiftPackageReference "Litext" */ = {
@@ -1298,14 +1306,6 @@
 				minimumVersion = 1.0.0;
 			};
 		};
-		5081A0152FC5A1B200079ECB /* XCRemoteSwiftPackageReference "Runestone.xcframework" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/Lakr233/Runestone.xcframework";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 0.2.0;
-			};
-		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -1375,7 +1375,7 @@
 		};
 		5081A0132D6DBBBA0079ECBE /* RunestoneEditor */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 5081A0152FC5A1B200079ECB /* XCRemoteSwiftPackageReference "Runestone.xcframework" */;
+			package = 5081A0152FC5A1B200079ECB /* XCRemoteSwiftPackageReference "Runestone" */;
 			productName = RunestoneEditor;
 		};
 		509038612FB0EB8500110DDB /* iCalendarParser */ = {

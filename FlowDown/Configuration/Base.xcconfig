@@ -17,6 +17,10 @@ PRODUCT_BUNDLE_IDENTIFIER = wiki.qaq.flow;
 
 CLOUDKIT_SYNC_CONTAINER_IDENTIFIER = iCloud.$(PRODUCT_BUNDLE_IDENTIFIER).sync;
 
+// A local DevelopmentDeveloper.xcconfig points this at entitlements an ad-hoc
+// signature can carry, to run on a Mac without the team's profiles.
+FLOWDOWN_CATALYST_ENTITLEMENTS = FlowDown/Resources/Entitlements/Entitlements-Catalyst.entitlements
+
 CODE_SIGN_STYLE = Automatic;
 CODE_SIGN_IDENTITY = Apple Development;
 CODE_SIGN_IDENTITY[sdk=macosx*] = Apple Development;
