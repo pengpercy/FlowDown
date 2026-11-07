@@ -9,36 +9,51 @@ import AlertController
 import UIKit
 
 #if targetEnvironment(macCatalyst)
+    /// Settings on Mac: a sheet sized to the window it opens over, laid out
+    /// like a Mac preferences window with a pane list on the left and the
+    /// selected pane, with its own navigation stack, on the right.
     class SettingController: AlertBaseController {
         override open var keyCommands: [UIKeyCommand]? {
             [
                 UIKeyCommand(
-                    title: NSLocalizedString("Back", comment: ""),
-                    action: #selector(escapePressed), // escape
-                    input: "\u{1b}",
+                    title: String(localized: "Back"),
+                    action: #selector(escapePressed),
+                    input: UIKeyCommand.inputEscape,
                     modifierFlags: [],
-                    propertyList: nil,
+                ),
+                UIKeyCommand(
+                    title: String(localized: "Back"),
+                    action: #selector(goBack),
+                    input: "[",
+                    modifierFlags: .command,
                 ),
             ]
         }
 
-        var content: NavigationController! = .init()
+        private(set) var content: SplitController!
 
         private var sheetSizingConstraints: [NSLayoutConstraint] = []
 
         override convenience init() {
-            let nav = NavigationController()
+            let split = SplitController()
             // No fixed size up front: the sheet sizes itself against the
             // window it is actually presented into, read once it is there.
             self.init(
-                rootViewController: nav,
+                rootViewController: split,
                 preferredWidth: nil,
                 preferredHeight: nil,
             )
 
-            content = nav
+            content = split
             shouldDismissWhenTappedAround = false
             shouldDismissWhenEscapeKeyPressed = true
+
+            split.onClose = { [weak self] in
+                self?.dismiss(animated: true)
+            }
+            if let entry = SettingController.getNextEntryPage() {
+                split.show(entry: entry)
+            }
         }
 
         override func viewWillLayoutSubviews() {
@@ -67,19 +82,47 @@ import UIKit
 
         @objc override func escapePressed() {
             guard presentedViewController == nil else { return }
-            if content.viewControllers.count > 1 {
-                content.popViewController(animated: true)
-            } else {
+            if !content.popDetail() {
                 dismiss(animated: true)
             }
         }
 
-        class NavigationController: UINavigationController {
-            let content = SettingContent()
+        @objc private func goBack() {
+            guard presentedViewController == nil else { return }
+            _ = content.popDetail()
+        }
+
+        /// The pane list beside the selected pane.
+        class SplitController: UISplitViewController {
+            var onClose: (() -> Void)? {
+                get { sidebar.onClose }
+                set { sidebar.onClose = newValue }
+            }
+
+            private let sidebar = SidebarController()
+            private let detail = UINavigationController()
+            private var paneRoots: [Pane: UIViewController] = [:]
 
             init() {
-                super.init(rootViewController: content)
-                navigationBar.prefersLargeTitles = false
+                super.init(style: .doubleColumn)
+                preferredDisplayMode = .oneBesideSecondary
+                preferredSplitBehavior = .tile
+                presentsWithGesture = false
+                displayModeButtonVisibility = .never
+                preferredPrimaryColumnWidth = 210
+                minimumPrimaryColumnWidth = 180
+                maximumPrimaryColumnWidth = 240
+
+                detail.navigationBar.prefersLargeTitles = false
+                detail.view.backgroundColor = .background
+
+                setViewController(sidebar, for: .primary)
+                setViewController(detail, for: .secondary)
+
+                sidebar.onSelect = { [weak self] pane in
+                    self?.show(pane: pane)
+                }
+                show(pane: .general)
             }
 
             @available(*, unavailable)
@@ -89,17 +132,50 @@ import UIKit
 
             override func viewDidLoad() {
                 super.viewDidLoad()
+                view.backgroundColor = .background
                 view.alpha = 0
             }
 
             override func viewWillAppear(_ animated: Bool) {
                 super.viewWillAppear(animated)
+                // Fade in once the sheet has its size, so the columns are not
+                // seen laying out at the presentation's starting frame.
                 Task { @MainActor in
                     try? await Task.sleep(for: .milliseconds(100))
                     UIView.animate(withDuration: 0.25) {
                         self.view.alpha = 1
                     }
                 }
+            }
+
+            override func viewDidAppear(_ animated: Bool) {
+                super.viewDidAppear(animated)
+                view.window?.firstResponder()?.resignFirstResponder()
+            }
+
+            /// Opens a pane, then pushes the entry's own page on top of it.
+            func show(entry: EntryPage) {
+                let destination = entry.destination
+                show(pane: destination.pane)
+                if let page = destination.page {
+                    detail.pushViewController(page, animated: false)
+                }
+            }
+
+            func show(pane: Pane) {
+                sidebar.select(pane)
+                let root = paneRoots[pane] ?? pane.makeController()
+                paneRoots[pane] = root
+                detail.setViewControllers([root], animated: false)
+            }
+
+            /// Steps back one page in the selected pane; false at its root.
+            func popDetail() -> Bool {
+                guard detail.presentedViewController == nil,
+                      detail.viewControllers.count > 1
+                else { return false }
+                detail.popViewController(animated: true)
+                return true
             }
         }
     }

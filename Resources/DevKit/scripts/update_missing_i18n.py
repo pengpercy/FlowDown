@@ -28,6 +28,14 @@ WELCOME_MESSAGE = (
 # Populate this map with explicit translations when introducing new keys.
 # Format: {"Key": {"zh-Hans": "示例", "es": "Ejemplo"}}
 NEW_STRINGS: dict[str, dict[str, str]] = {
+    "Show More": {
+        "de": "Mehr anzeigen",
+        "es": "Mostrar más",
+        "fr": "Afficher plus",
+        "ja": "さらに表示",
+        "ko": "더 보기",
+        "zh-Hans": "加载更多",
+    },
     "Folders": {
         "de": "Ordner",
         "es": "Carpetas",

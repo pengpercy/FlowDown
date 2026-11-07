@@ -548,9 +548,7 @@ class MainController: UIViewController {
                 title: "No Model Available",
                 message: "Please add some models to use. You can choose to download models, or use cloud model from well known service providers.",
             ) {
-                let setting = SettingController()
-                SettingController.setNextEntryPage(.modelManagement)
-                self.present(setting, animated: true)
+                SettingController.open(.modelManagement, from: self)
             }
             return
         }

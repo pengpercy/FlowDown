@@ -1,5 +1,5 @@
 //
-//  SectionDateHeaderView.swift
+//  SectionHeaderView.swift
 //  FlowDown
 //
 //  Created by 秋星桥 on 6/28/25.
@@ -10,20 +10,10 @@ import UIKit
 
 /// A compact sidebar section header: a small secondary title aligned with the
 /// row content, plus an optional trailing accessory such as an add button.
-class SectionDateHeaderView: UIView {
+class SectionHeaderView: UIView {
     static let height: CGFloat = 30
 
     private let titleLabel = UILabel()
-
-    private static let dateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .none
-        formatter.locale = .current
-        // Reads "Today" and "Yesterday" in the user's language for recent days.
-        formatter.doesRelativeDateFormatting = true
-        return formatter
-    }()
 
     init(accessory: UIView? = nil) {
         super.init(frame: .zero)
@@ -67,9 +57,5 @@ class SectionDateHeaderView: UIView {
     func updateTitle(_ title: String) {
         titleLabel.text = title
         titleLabel.accessibilityTraits = .header
-    }
-
-    func updateTitle(date: Date) {
-        updateTitle(Self.dateFormatter.string(from: date))
     }
 }
