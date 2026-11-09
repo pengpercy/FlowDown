@@ -152,7 +152,7 @@ test: test-unit
 
 test-unit:
 	$(prepare-build-dirs)
-	DESTINATION="$$(./Resources/DevKit/scripts/get_first_ios_simulator.sh)"; \
+	DESTINATION="$$(./Resources/DevKit/scripts/get_first_ios_simulator.sh)" && \
 	$(BUILD_ENV) XCBUILD_LABEL=test-unit $(XCODEBUILD) \
 		-scheme $(IOS_SCHEME) \
 		-destination "$$DESTINATION" \
