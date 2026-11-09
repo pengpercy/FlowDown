@@ -29,7 +29,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     ) -> Bool {
         guard !RecoveryMode.isActivated else { return true }
 
-        UIScrollView.appearance().bounces = false
+        #if targetEnvironment(macCatalyst)
+            UIScrollView.appearance().bounces = false
+        #endif
         UITableView.appearance().backgroundColor = .clear
         UIButton.appearance().tintColor = .accent
         UITextView.appearance().tintColor = .accent
