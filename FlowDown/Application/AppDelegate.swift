@@ -29,6 +29,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     ) -> Bool {
         guard !RecoveryMode.isActivated else { return true }
 
+        UIScrollView.appearance().bounces = false
         UITableView.appearance().backgroundColor = .clear
         UIButton.appearance().tintColor = .accent
         UITextView.appearance().tintColor = .accent
