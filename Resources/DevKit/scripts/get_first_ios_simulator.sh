@@ -7,8 +7,8 @@ set -euo pipefail
 #
 # Key insight: `simctl list` marks a runtime as isAvailable when its files
 # are on disk, but Xcode N.x may still refuse to use an iOS N.(x-1) runtime.
-# We therefore ensure the matching iOS platform is installed first, then
-# cross-validate runtimes against devices.
+# We therefore cross-validate runtimes against devices. The iOS platform is a
+# download of about 10 GB, so it is never fetched implicitly.
 
 find_simulator() {
     xcrun simctl list --json | python3 -c "
@@ -40,13 +40,8 @@ sys.exit(1)
 "
 }
 
-# ensure the iOS platform matching the current Xcode is installed
-# (fast no-op when already present)
-echo "[*] ensuring iOS platform is installed for current Xcode..." >&2
-xcodebuild -downloadPlatform iOS 2>&1 | while IFS= read -r line; do echo "    $line" >&2; done
-
 SIMULATOR=$(find_simulator) || {
-    echo "[-] no available iPhone simulator found after platform install" >&2
+    echo "[-] no available iPhone simulator found; install one with: xcodebuild -downloadPlatform iOS" >&2
     exit 1
 }
 
