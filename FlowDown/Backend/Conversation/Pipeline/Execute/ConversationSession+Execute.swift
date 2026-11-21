@@ -14,7 +14,6 @@ import UIKit
 extension ConversationSession {
     func doInfere(
         modelID: ModelManager.ModelIdentifier,
-        currentMessageListView: MessageListView,
         inputObject: RichEditorView.Object,
         completion: @escaping () -> Void,
     ) {
@@ -22,7 +21,6 @@ extension ConversationSession {
             Logger.app.infoFile("do infere called: \(id)")
             Logger.app.infoFile("    - chat - \(ModelManager.shared.modelName(identifier: models.chat))")
             Logger.app.infoFile("    - task - \(ModelManager.shared.modelName(identifier: models.auxiliary))")
-            Logger.app.infoFile("    - view - \(ModelManager.shared.modelName(identifier: models.visualAuxiliary))")
 
             var backgroundTask: UIBackgroundTaskIdentifier = .invalid
             backgroundTask = UIApplication.shared.beginBackgroundTask { [weak self] in
@@ -55,7 +53,6 @@ extension ConversationSession {
                 await requestUpdate()
                 await doInfereExecute(
                     modelID: modelID,
-                    currentMessageListView: currentMessageListView,
                     inputObject: inputObject,
                 )
                 self.currentTask = nil
@@ -77,19 +74,9 @@ extension ConversationSession {
 
     private nonisolated func doInfereExecute(
         modelID: ModelManager.ModelIdentifier,
-        currentMessageListView: MessageListView,
         inputObject: RichEditorView.Object,
     ) async {
-        var object = inputObject
-
-        let modelName = ModelManager.shared.modelName(identifier: modelID)
         let modelCapabilities = ModelManager.shared.modelCapabilities(identifier: modelID)
-        let modelContextLength = ModelManager.shared.modelContextLength(identifier: modelID)
-        var modelWillExecuteTools = false
-        if case let .bool(value) = object.options[.tools], value {
-            assert(modelCapabilities.contains(.tool))
-            modelWillExecuteTools = true
-        }
 
         assert(models.chat != nil)
 
@@ -103,16 +90,11 @@ extension ConversationSession {
 
         do {
             try await doInfereExecuteCore(
-                currentMessageListView,
-                &object,
+                inputObject,
                 modelCapabilities,
                 &requestMessages,
-                modelName,
-                modelWillExecuteTools,
-                modelContextLength,
                 modelID,
             )
-            save()
         } catch {
             logger.errorFile("\(error.localizedDescription)")
             finalizeInterruptedReasoning()
@@ -127,7 +109,6 @@ extension ConversationSession {
                 let errorMessage = appendNewMessage(role: .assistant)
                 errorMessage.update(\.document, to: "```\n\(sanitized)")
             }
-            await requestUpdate()
         }
 
         stopThinkingForAll()
@@ -135,15 +116,14 @@ extension ConversationSession {
         await requestUpdate()
         save()
 
-        await requestUpdate()
         await MainActor.run { UIApplication.shared.isIdleTimerDisabled = false }
         endActivity()
     }
 
     /// Gives each assistant message cut off mid-reasoning the placeholder the
-    /// completed round writes. The reasoning tile reads an empty document as
-    /// still thinking, so a failed or cancelled stream would otherwise leave
-    /// it animating.
+    /// completed round writes, so its reasoning still replays with a non-empty
+    /// turn. The message list folds the reply into the activity summary and
+    /// never shows the placeholder; the summary stops once the session does.
     func finalizeInterruptedReasoning() {
         for message in messages where message.role == .assistant {
             let reasoning = message.reasoningContent.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -152,6 +132,9 @@ extension ConversationSession {
             message.update(\.document, to: String(localized: "Thinking finished without output any content."))
         }
     }
+
+    /// How many rounds of tool calls one message may run.
+    static let toolRoundLimit = 64
 
     func requestLinkContentIndex(_ url: URL) -> Int {
         assert(!Thread.isMainThread)
@@ -162,15 +145,18 @@ extension ConversationSession {
     }
 
     private func doInfereExecuteCore(
-        _ currentMessageListView: MessageListView,
-        _ object: inout RichEditorView.Object,
+        _ object: RichEditorView.Object,
         _ modelCapabilities: Set<ModelCapabilities>,
         _ requestMessages: inout [ChatRequestBody.Message],
-        _ modelName: String,
-        _ modelWillExecuteTools: Bool,
-        _ modelContextLength: Int,
         _ modelID: ModelManager.ModelIdentifier,
     ) async throws {
+        let modelName = ModelManager.shared.modelName(identifier: modelID)
+        let modelContextLength = ModelManager.shared.modelContextLength(identifier: modelID)
+        let modelWillExecuteTools = if case let .bool(value) = object.options[.tools] { value } else { false }
+        if modelWillExecuteTools {
+            assert(modelCapabilities.contains(.tool))
+        }
+
         try checkCancellation()
         showActivity()
 
@@ -183,15 +169,15 @@ extension ConversationSession {
 
         updateAttachments(object.attachments, for: userMessage)
         save()
+        // The first message is the title until a generated one replaces it
+        // after the turn, so the sidebar never shows the default name.
+        applyFallbackTitleIfNeeded()
 
         try checkCancellation()
-        try await preprocessAttachments(
-            &object,
-            modelCapabilities.contains(.visual),
-            currentMessageListView,
-            userMessage,
+        await noteImagesRequiringVisualInput(
+            object.attachments,
+            modelCapabilities: modelCapabilities,
         )
-        save()
 
         if !object.attachments.isEmpty {
             showActivity(String(localized: "Processing Attachments"))
@@ -203,8 +189,7 @@ extension ConversationSession {
             save()
         }
 
-        let servers = MCPService.shared.servers.value
-        let shouldPrepareMCP = servers.filter(\.isEnabled).count > 0
+        let shouldPrepareMCP = MCPService.shared.servers.value.contains(where: \.isEnabled)
         if shouldPrepareMCP {
             showActivity(String(localized: "Preparing Model Context"))
             await MCPService.shared.prepareForConversation { [weak self] status in
@@ -214,26 +199,27 @@ extension ConversationSession {
             showActivity(String(localized: "Preparing Model Context"))
         }
 
-        var tools: [ModelTool] = []
-        if modelWillExecuteTools {
-            await tools.append(contentsOf: ModelToolsManager.shared.getEnabledToolsIncludeMCP())
-        }
+        let toolSet: ModelToolSet = modelWillExecuteTools
+            ? await ModelToolsManager.shared.makeToolSet()
+            : .empty
+        let webSearchEnabled = toolSet.contains { $0 is MTWebSearchTool }
 
-        let toolsDefinitions = tools.isEmpty ? nil : tools.map(\.definition)
-        let webSearchEnabled = tools.contains { $0 is MTWebSearchTool }
-
-        await injectNewSystemCommand(
-            &requestMessages,
-            modelName,
-            modelWillExecuteTools,
-            webSearchEnabled,
-            object,
+        await ConversationSystemPromptBuilder.appendMessages(
+            to: &requestMessages,
+            input: .init(
+                userText: object.text,
+                modelName: modelName,
+                modelWillExecuteTools: modelWillExecuteTools,
+                webSearchEnabled: webSearchEnabled,
+                contextPlacement: ConversationSystemPromptBuilder.contextPlacement(for: modelID),
+            ),
+            dependencies: .live(),
         )
 
         try checkCancellation()
         if try removeOutOfContextContents(
             &requestMessages,
-            toolsDefinitions,
+            toolSet.definitions,
             modelContextLength,
             preservesReasoning: modelCapabilities.contains(.preservedThinking),
         ) {
@@ -249,19 +235,33 @@ extension ConversationSession {
         save()
 
         var shouldContinue = false
+        var toolRounds = 0
         repeat {
             // A round returns true exactly when it executed tools, so the next
             // one is their follow-up even if attachments now end the request.
             let isFollowUpAfterToolCall = shouldContinue
             shouldContinue = try await doMainInferenceOnce(
-                currentMessageListView,
                 modelID,
                 &requestMessages,
-                toolsDefinitions,
+                toolSet,
                 modelWillExecuteTools,
                 isFollowUpAfterToolCall,
             )
             save()
+            if shouldContinue {
+                toolRounds += 1
+                // A model that keeps calling tools would otherwise run until
+                // the context fills up.
+                if toolRounds >= Self.toolRoundLimit {
+                    let hintMessage = appendNewMessage(role: .hint)
+                    hintMessage.update(
+                        \.document,
+                        to: String(localized: "Stopped after \(toolRounds) rounds of tool calls."),
+                    )
+                    await requestUpdate()
+                    shouldContinue = false
+                }
+            }
         } while shouldContinue
 
         await requestUpdate()
@@ -270,7 +270,7 @@ extension ConversationSession {
 
         let shouldExtractMemory = modelWillExecuteTools && ModelToolsManager.shared.canStoreMemory
         let recentMessages = Array(messages.suffix(6))
-        let auxModel = models.auxiliary ?? models.chat
+        let auxModel = models.auxiliary
         let convId = id
         let allMessages = messages
         await MainActor.run {

@@ -40,6 +40,10 @@ final class ConversationSession: Identifiable {
     /// string = plain dots), nil hides it. Only written on the main queue.
     let activityText = CurrentValueSubject<String?, Never>(nil)
 
+    /// The tool call waiting for the user, which the composer shows in place
+    /// of the input while this conversation is on screen.
+    let toolApprovalGate = ModelToolApprovalGate()
+
     // Main-queue-confined; every mutation funnels through DispatchQueue.main
     // so state transitions keep the order their call sites issued them in —
     // an unstructured Task per call would not guarantee that.
@@ -150,8 +154,11 @@ final class ConversationSession: Identifiable {
 
     class Models {
         var chat: ModelManager.ModelIdentifier?
-        var auxiliary: ModelManager.ModelIdentifier?
-        var visualAuxiliary: ModelManager.ModelIdentifier?
+        /// Auxiliary tasks (titles, icons, search keywords, memory, summaries)
+        /// always run on the conversation's chat model.
+        var auxiliary: ModelManager.ModelIdentifier? {
+            chat
+        }
     }
 
     let models = Models()
@@ -374,23 +381,6 @@ final class ConversationSession: Identifiable {
         } else if models.chat == nil || models.chat!.isEmpty {
             models.chat = .defaultModelForConversation
         }
-
-        // task auxiliary model
-        if ModelManager.ModelIdentifier.defaultModelForAuxiliaryTaskWillUseCurrentChatModel {
-            // When "Use Chat Model" is enabled, always use the chat model
-            models.auxiliary = models.chat ?? .defaultModelForAuxiliaryTask
-        } else {
-            // When "Use Chat Model" is disabled, use the stored auxiliary model
-            // Only update if current value is nil or empty
-            if models.auxiliary == nil || models.auxiliary!.isEmpty {
-                models.auxiliary = .defaultModelForAuxiliaryTask
-            }
-        }
-
-        // visual auxiliary model
-        if models.visualAuxiliary == nil || models.visualAuxiliary!.isEmpty {
-            models.visualAuxiliary = .defaultModelForAuxiliaryVisualTask
-        }
     }
 
     func nearestUserMessage(beforeOrEqual messageIdentifier: Message.ID) -> Message? {
@@ -402,11 +392,12 @@ final class ConversationSession: Identifiable {
         // between the prompt and its answer; retrying them would resend
         // their placeholder text instead of the user's question.
         return messages.last {
-            $0.creation <= message.creation && $0.role == .user && !isAttachmentHolder($0)
+            // `!(b < a)` rather than `a <= b`: see Date+BackDeployedComparison.swift.
+            !(message.creation < $0.creation) && $0.role == .user && !isAttachmentHolder($0)
         }
     }
 
-    func retry(byClearAfter messageIdentifier: Message.ID, currentMessageListView: MessageListView) {
+    func retry(byClearAfter messageIdentifier: Message.ID) {
         guard let nearestUserMessage = nearestUserMessage(beforeOrEqual: messageIdentifier) else {
             assertionFailure()
             return
@@ -445,7 +436,6 @@ final class ConversationSession: Identifiable {
         deleteCurrentAndAfter(messageIdentifier: nearestUserMessage.objectId) {
             self.doInfere(
                 modelID: modelID,
-                currentMessageListView: currentMessageListView,
                 inputObject: editorObject,
             ) {}
         }

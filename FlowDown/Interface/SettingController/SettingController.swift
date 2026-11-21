@@ -411,7 +411,7 @@ import UIKit
         }
     }
 #else
-    class SettingController: UINavigationController {
+    class SettingController: FadeBarNavigationController {
         init() {
             super.init(rootViewController: SettingContent())
             navigationBar.prefersLargeTitles = false

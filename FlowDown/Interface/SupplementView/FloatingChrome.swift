@@ -1,0 +1,367 @@
+//
+//  FloatingChrome.swift
+//  FlowDown
+//
+//  The bars' chrome without a bar background: a soft edge under the title
+//  row — our own `ProgressiveBlurView` on every iOS version — and buttons
+//  that carry their own surface: system glass on iOS 26 and later, a
+//  material circle before.
+//  Designer spec v2 (Colo, header-fade-blur.md).
+//
+
+import SnapKit
+import UIKit
+
+enum FloatingChrome {
+    /// How far the solid part of the top edge runs past the bottom of the
+    /// header buttons.
+    static let belowButtons: CGFloat = 14
+    /// How far past that the edge fades out.
+    static let tail: CGFloat = 28
+    /// The circle every icon button stands in.
+    static let buttonSize: CGFloat = 44
+    /// The icon inside it.
+    static let iconConfiguration = UIImage.SymbolConfiguration(pointSize: 17, weight: .medium)
+    /// From the screen or column edge to the nearest button.
+    static let edgeInset: CGFloat = 16
+    /// Between two buttons side by side.
+    static let buttonSpacing: CGFloat = 8
+
+    /// The top edge's height: from the top of the screen to the bottom of the
+    /// header buttons, then `belowButtons` and the `tail`.
+    static func topEdgeHeight(buttonBottom: CGFloat) -> CGFloat {
+        max(0, buttonBottom) + fadeLength
+    }
+
+    /// How far an edge fades out, past the buttons on top and above the
+    /// input card at the bottom.
+    static let fadeLength: CGFloat = belowButtons + tail
+
+    /// How far the edge of a pushed page or the sidebar runs past the bottom
+    /// of its top control (the bar's buttons, or the search field below
+    /// them). A page's first line rests about 30 pt below the control,
+    /// clear of it.
+    static let pageTail: CGFloat = 16
+
+    /// A page's top edge: from the top of the screen to the bottom of its
+    /// top control, then the `pageTail`. It fades like every edge, in a
+    /// straight line from the top of the screen to nothing at its end.
+    static func pageEdgeHeight(controlBottom: CGFloat) -> CGFloat {
+        max(0, controlBottom) + pageTail
+    }
+
+    /// The edges' numbers (designer Colo + owner, 2026-11-10): full strength
+    /// at the screen edge, falling in a straight line to nothing at the far
+    /// end — a 4 pt blur and a light frost, no hold.
+    static func edgeStyle(height _: CGFloat) -> ProgressiveBlurStyle {
+        var style = ProgressiveBlurStyle.standard
+        style.radius = 4
+        style.frostRadius = 16
+        style.frostOpacity = 0.2
+        style.hold = 0
+        style.curve = .linear
+        return style
+    }
+
+    /// The same numbers fading over the whole height: full at the edge,
+    /// nothing at the far end. Above the input card, where the page's own
+    /// background takes over below the card's centre line.
+    static var fullFadeEdgeStyle: ProgressiveBlurStyle {
+        var style = edgeStyle(height: 0)
+        style.hold = 0
+        return style
+    }
+
+    #if DEBUG
+        /// Launch with `FD_FORCE_LEGACY_CHROME=1` to draw the buttons the way
+        /// iOS 17–25 does on a newer system — the Team has no simulator older
+        /// than iOS 26 (`simulator launch <id> --env FD_FORCE_LEGACY_CHROME=1`).
+        /// Debug builds only; it changes the buttons, not the edge.
+        static let forcesLegacyButtons = ProcessInfo.processInfo.environment["FD_FORCE_LEGACY_CHROME"] == "1"
+    #else
+        static let forcesLegacyButtons = false
+    #endif
+
+    /// Whether buttons stand in the system's glass (iOS 26 and later) or in
+    /// the material circle of earlier systems.
+    static var usesSystemGlass: Bool {
+        #if targetEnvironment(macCatalyst)
+            return false
+        #else
+            if forcesLegacyButtons { return false }
+            if #available(iOS 26, *) { return true }
+            return false
+        #endif
+    }
+
+    /// Whether the top edge of every page is the system's soft scroll edge
+    /// effect or our own `ProgressiveBlurView`. Never both: where this is
+    /// true no top `ProgressiveBlurView` exists, and where it is false the
+    /// system's top edge effect is turned off (`configureTopEdge(of:)`).
+    ///
+    /// Always false: on iOS 26 and 27 devices the system's soft edge draws
+    /// as an opaque bar with a hairline under our transparent bars, so every
+    /// iOS version uses our own blur, as before 5.2.11. The system path is
+    /// kept behind this switch. The Mac has neither a soft edge of ours nor
+    /// floating chrome, and keeps the system's defaults.
+    static var usesSystemScrollEdge: Bool {
+        false
+    }
+
+    /// The top edge of a scroll view under a bar or floating header: the
+    /// system's soft scroll edge effect where `usesSystemScrollEdge`, and
+    /// otherwise (always, today) the system's effect off on iOS 26 and
+    /// later, so it does not stack with the `ProgressiveBlurView` standing
+    /// over the scroll view.
+    static func configureTopEdge(of scrollView: UIScrollView) {
+        #if !targetEnvironment(macCatalyst)
+            if #available(iOS 26, *) {
+                if usesSystemScrollEdge {
+                    scrollView.topEdgeEffect.style = .soft
+                    scrollView.topEdgeEffect.isHidden = false
+                } else {
+                    scrollView.topEdgeEffect.isHidden = true
+                }
+            }
+        #endif
+    }
+
+    /// Tells the system that `container` holds controls floating over the
+    /// top of `scrollView` (a header that is not a `UINavigationBar`), so
+    /// the scroll view's top edge effect reaches down under them. The
+    /// system sizes the effect from the container's descendants; no height
+    /// is set here. Returns the interaction (to retarget its scroll view
+    /// later), or nil where `usesSystemScrollEdge` is false.
+    @discardableResult
+    static func addTopEdgeElements(in container: UIView, over scrollView: UIScrollView?) -> UIInteraction? {
+        #if !targetEnvironment(macCatalyst)
+            if usesSystemScrollEdge, #available(iOS 26, *) {
+                let interaction = UIScrollEdgeElementContainerInteraction()
+                interaction.scrollView = scrollView
+                interaction.edge = .top
+                container.addInteraction(interaction)
+                return interaction
+            }
+        #endif
+        return nil
+    }
+
+    /// Points a top edge element interaction at another scroll view.
+    static func retarget(_ interaction: UIInteraction?, to scrollView: UIScrollView?) {
+        #if !targetEnvironment(macCatalyst)
+            if #available(iOS 26, *), let interaction = interaction as? UIScrollEdgeElementContainerInteraction,
+               interaction.scrollView !== scrollView
+            {
+                interaction.scrollView = scrollView
+            }
+        #endif
+    }
+
+    /// Turns off the system's bottom scroll edge on iOS 26 and later, where
+    /// the input bar wears its own (`ChatView.bottomEdgeBlur`).
+    static func hideSystemBottomEdge(of scrollView: UIScrollView) {
+        #if !targetEnvironment(macCatalyst)
+            if #available(iOS 26, *) {
+                scrollView.bottomEdgeEffect.isHidden = true
+            }
+        #endif
+    }
+}
+
+extension ProgressiveBlurView {
+    /// Places the edge and gives it `FloatingChrome.edgeStyle` for that
+    /// height.
+    func layoutAsBarEdge(_ frame: CGRect) {
+        self.frame = frame
+        let style = FloatingChrome.edgeStyle(height: frame.height)
+        if self.style != style { self.style = style }
+    }
+}
+
+// MARK: - Edge elements
+
+/// Groups a custom header's controls (not a `UINavigationBar`) for
+/// `FloatingChrome.addTopEdgeElements(in:over:)`. It draws nothing and takes
+/// no touches itself: a touch goes to whichever control it lands on, even
+/// outside this view's bounds, or on to what lies behind — as if the
+/// controls stood in this view's superview.
+final class FloatingChromeElementContainer: UIView {
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        guard isUserInteractionEnabled, !isHidden, alpha > 0.01 else { return nil }
+        for subview in subviews.reversed() {
+            if let hit = subview.hitTest(convert(point, to: subview), with: event) {
+                return hit
+            }
+        }
+        return nil
+    }
+}
+
+// MARK: - Surface
+
+extension UIView {
+    /// Stands the view in a floating button's surface: interactive glass on
+    /// iOS 26 and later, `FloatingButtonSurfaceView` before. The view fills
+    /// the surface; the surface takes the size its constraints give it.
+    func wrappedInFloatingButtonSurface() -> UIView {
+        #if !targetEnvironment(macCatalyst)
+            if FloatingChrome.usesSystemGlass, #available(iOS 26, *) {
+                let effect = UIGlassEffect()
+                effect.isInteractive = true
+                let container = UIVisualEffectView(effect: effect)
+                container.clipsToBounds = true
+                container.cornerConfiguration = .capsule()
+                container.contentView.addSubview(self)
+                snp.makeConstraints { $0.edges.equalToSuperview() }
+                return container
+            }
+        #endif
+        let container = FloatingButtonSurfaceView()
+        container.contentView.addSubview(self)
+        snp.makeConstraints { $0.edges.equalToSuperview() }
+        return container
+    }
+}
+
+/// A floating button's surface before iOS 26: a regular-material capsule
+/// (a circle when square) with a hairline edge and a soft shadow, pressed to
+/// 0.92 while touched.
+final class FloatingButtonSurfaceView: UIView, UIGestureRecognizerDelegate {
+    let contentView = UIView()
+    private let materialView = UIVisualEffectView(effect: UIBlurEffect(style: .systemMaterial))
+
+    init() {
+        super.init(frame: .zero)
+        clipsToBounds = false
+        layer.shadowColor = UIColor.black.cgColor
+        layer.shadowOffset = CGSize(width: 0, height: 3)
+        layer.shadowRadius = 10
+
+        materialView.clipsToBounds = true
+        materialView.layer.cornerCurve = .continuous
+        materialView.layer.borderWidth = 0.5
+        addSubview(materialView)
+        materialView.contentView.addSubview(contentView)
+
+        let press = UILongPressGestureRecognizer(target: self, action: #selector(handlePress(_:)))
+        press.minimumPressDuration = 0
+        press.cancelsTouchesInView = false
+        press.delaysTouchesBegan = false
+        press.delegate = self
+        addGestureRecognizer(press)
+
+        updateAppearance()
+        _ = registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: FloatingButtonSurfaceView, _: UITraitCollection) in
+            view.updateAppearance()
+        }
+    }
+
+    @available(*, unavailable)
+    required init?(coder _: NSCoder) {
+        fatalError()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        materialView.frame = bounds
+        contentView.frame = materialView.contentView.bounds
+        let radius = min(bounds.width, bounds.height) / 2
+        materialView.layer.cornerRadius = radius
+        layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: radius).cgPath
+    }
+
+    private func updateAppearance() {
+        let isDark = traitCollection.userInterfaceStyle == .dark
+        materialView.layer.borderColor = isDark
+            ? UIColor.white.withAlphaComponent(0.12).cgColor
+            : UIColor.black.withAlphaComponent(0.08).cgColor
+        layer.shadowOpacity = isDark ? 0.3 : 0.1
+    }
+
+    @objc private func handlePress(_ recognizer: UILongPressGestureRecognizer) {
+        let pressed: Bool
+        switch recognizer.state {
+        case .began:
+            pressed = true
+        case .changed:
+            pressed = bounds.insetBy(dx: -16, dy: -16).contains(recognizer.location(in: self))
+        default:
+            pressed = false
+        }
+        let target: CGAffineTransform = pressed ? .init(scaleX: 0.92, y: 0.92) : .identity
+        guard transform != target else { return }
+        UIView.animate(
+            springDuration: 0.25,
+            bounce: 0,
+            options: [.allowUserInteraction, .beginFromCurrentState],
+        ) {
+            self.transform = target
+        }
+    }
+
+    func gestureRecognizer(_: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith _: UIGestureRecognizer) -> Bool {
+        true
+    }
+}
+
+// MARK: - Buttons
+
+/// A 44 pt floating icon button: a 17 pt medium symbol in the primary colour
+/// (never the accent), standing in `wrappedInFloatingButtonSurface()`.
+final class FloatingIconButton: UIButton {
+    var easyHitInsets: UIEdgeInsets = .init(top: -8, left: -8, bottom: -8, right: -8)
+
+    convenience init(systemName: String) {
+        self.init(image: UIImage(systemName: systemName, withConfiguration: FloatingChrome.iconConfiguration))
+    }
+
+    init(image: UIImage?) {
+        super.init(frame: .zero)
+        var configuration = UIButton.Configuration.plain()
+        configuration.image = image
+        configuration.baseForegroundColor = .label
+        configuration.contentInsets = .zero
+        self.configuration = configuration
+        tintColor = .label
+    }
+
+    @available(*, unavailable)
+    required init?(coder _: NSCoder) {
+        fatalError()
+    }
+
+    override var intrinsicContentSize: CGSize {
+        .init(width: FloatingChrome.buttonSize, height: FloatingChrome.buttonSize)
+    }
+
+    override func point(inside point: CGPoint, with _: UIEvent?) -> Bool {
+        bounds.inset(by: easyHitInsets).contains(point)
+    }
+}
+
+/// A 44 pt high floating text button (Done, Cancel, Save…): 17 pt, semibold
+/// when it confirms, 16 pt either side.
+final class FloatingTextButton: UIButton {
+    init(title: String, isConfirming: Bool) {
+        super.init(frame: .zero)
+        var configuration = UIButton.Configuration.plain()
+        var attributed = AttributedString(title)
+        attributed.font = .systemFont(ofSize: 17, weight: isConfirming ? .semibold : .regular)
+        configuration.attributedTitle = attributed
+        configuration.baseForegroundColor = .label
+        configuration.contentInsets = .init(top: 0, leading: 16, bottom: 0, trailing: 16)
+        configuration.titleLineBreakMode = .byTruncatingTail
+        self.configuration = configuration
+        tintColor = .label
+    }
+
+    @available(*, unavailable)
+    required init?(coder _: NSCoder) {
+        fatalError()
+    }
+
+    override var intrinsicContentSize: CGSize {
+        let size = super.intrinsicContentSize
+        return .init(width: max(size.width, FloatingChrome.buttonSize), height: FloatingChrome.buttonSize)
+    }
+}

@@ -35,18 +35,34 @@ final class MessageListView: UIView {
             alpha = 0
             sessionScopedCancellables.forEach { $0.cancel() }
             sessionScopedCancellables.removeAll()
+            // Ahead of the new session's first update on the queue: nothing
+            // held back from the last one is built again.
+            updateQueue.async { [weak self] in
+                guard let self else { return }
+                pendingThoughtFlush?.cancel()
+                pendingThoughtFlush = nil
+                inlineStepsUpstream.reset()
+            }
             let sessionID = session.id
-            Publishers.CombineLatest3(
+            Publishers.CombineLatest4(
                 session.messagesDidChange,
                 session.activityText.removeDuplicates(),
                 ConversationSessionManager.shared.executingSessionsPublisher
                     .map { $0.contains(sessionID) }
                     .removeDuplicates(),
+                // Turning it on or off rebuilds the rows on screen.
+                InlineActivityStepsSetting.publisher,
             )
             .receive(on: updateQueue)
-            .sink { [weak self] v1, v2, isExecuting in
+            .sink { [weak self] v1, v2, isExecuting, showsSteps in
                 guard let self else { return }
-                updateFromUpstreamPublisher(v1.0, v1.1, isLoading: v2, isExecuting: isExecuting)
+                updateFromUpstreamPublisher(
+                    v1.0,
+                    v1.1,
+                    isLoading: v2,
+                    isExecuting: isExecuting,
+                    showsSteps: showsSteps,
+                )
             }
             .store(in: &sessionScopedCancellables)
             session.userDidSendMessage.sink { [unowned self] _ in
@@ -111,6 +127,12 @@ final class MessageListView: UIView {
     private(set) lazy var markdownPackageCache: MarkdownPackageCache = .init()
     /// The fenced code blocks the reader unfolded, per message.
     var expandedCodeBlocks: [Message.ID: Set<Int>] = [:]
+    /// Every call's reason, for summaries that list their steps.
+    let toolReasons = ToolReasonCache()
+
+    /// Confined to the update queue, like everything below it.
+    private var inlineStepsUpstream = InlineStepsUpstream()
+    private var pendingThoughtFlush: DispatchWorkItem?
 
     #if DEBUG
         // TEMP scroll-diag: remove after #2.
@@ -152,13 +174,6 @@ final class MessageListView: UIView {
         listView.contentInsetAdjustmentBehavior = .never
         listView.automaticallyAdjustsScrollIndicatorInsets = false
         listView.showsHorizontalScrollIndicator = false
-        #if !targetEnvironment(macCatalyst)
-            // Rows trail the scroll on springs; the content offset itself is
-            // untouched, so the auto-scroll-to-bottom math is unaffected.
-            // Same tuning as AirBuild, by feel. Springs feel out of place on
-            // the desktop, so Catalyst scrolls rigidly.
-            listView.rowAnimator = ListBouncyAnimator(damping: 0.975, frequency: 25.0)
-        #endif
         addSubview(listView)
         listView.snp.makeConstraints { make in
             make.edges.equalToSuperview()
@@ -310,7 +325,12 @@ final class MessageListView: UIView {
 
     func updateList(animated: Bool = false) {
         let isExecuting = ConversationSessionManager.shared.isSessionExecuting(session.id)
-        listView.apply(entries(from: session.messages, isExecuting: isExecuting), animated: animated)
+        let entries = entries(
+            from: session.messages,
+            isExecuting: isExecuting,
+            showsSteps: InlineActivityStepsSetting.isEnabled(),
+        )
+        listView.apply(entries, animated: animated)
     }
 
     func updateFromUpstreamPublisher(
@@ -318,14 +338,34 @@ final class MessageListView: UIView {
         _ scrolling: Bool,
         isLoading: String?,
         isExecuting: Bool,
+        showsSteps: Bool = false,
     ) {
         assert(!Thread.isMainThread)
         #if DEBUG
             // TEMP scroll-diag: remove after #2.
             Logger.ui.infoFile("[scroll-diag] upstream scrolling=\(scrolling) auto=\(isAutoScrollingToBottom) loading=\(isLoading ?? "nil")")
         #endif
-        var entries = entries(from: messages, isExecuting: isExecuting)
+        var entries = entries(from: messages, isExecuting: isExecuting, showsSteps: showsSteps)
+        if showsSteps {
+            let shown = inlineStepsUpstream.receive(
+                .init(entries: entries, scrolling: scrolling, isLoading: isLoading),
+                now: CACurrentMediaTime(),
+            )
+            entries = shown.entries
+            if let wait = shown.wait {
+                scheduleThoughtFlush(after: wait)
+            }
+        } else {
+            inlineStepsUpstream.clear()
+        }
+        present(entries, scrolling: scrolling, isLoading: isLoading)
+    }
 
+    /// Shows entries built on the update queue: from a notification, or a
+    /// flush of the last one.
+    private func present(_ entries: [Entry], scrolling: Bool, isLoading: String?) {
+        assert(!Thread.isMainThread)
+        var entries = entries
         for entry in entries {
             switch entry {
             case let .aiContent(_, messageRepresentation):
@@ -366,6 +406,25 @@ final class MessageListView: UIView {
                 }
             }
         }
+    }
+
+    /// Shows the last notification's entries again once a held-back thought
+    /// may show, so its last text appears even when nothing else arrives
+    /// after it. Built from the entries captured then, never from the
+    /// messages, which the stream may be writing (`InlineStepsUpstream`).
+    private func scheduleThoughtFlush(after wait: TimeInterval) {
+        guard pendingThoughtFlush == nil else { return }
+        let item = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            pendingThoughtFlush = nil
+            guard let flushed = inlineStepsUpstream.flush(now: CACurrentMediaTime()) else { return }
+            if let wait = flushed.wait {
+                scheduleThoughtFlush(after: wait)
+            }
+            present(flushed.entries, scrolling: flushed.snapshot.scrolling, isLoading: flushed.snapshot.isLoading)
+        }
+        pendingThoughtFlush = item
+        updateQueue.asyncAfter(deadline: .now() + wait, execute: item)
     }
 }
 

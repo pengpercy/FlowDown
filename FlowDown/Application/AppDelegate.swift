@@ -78,21 +78,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         }
 
         sdb.clearDeletedRecords()
-
-        if let firstSeenTicketURL = FileManager.default
-            .urls(for: .documentDirectory, in: .userDomainMask)
-            .first?
-            .appendingPathComponent("first_seen_ticket.txt"),
-            !FileManager.default.fileExists(atPath: firstSeenTicketURL.path)
-        {
-            let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
-            do {
-                try version.write(to: firstSeenTicketURL, atomically: true, encoding: .utf8)
-                logger.infoFile("wrote first seen ticket: \(version)")
-            } catch {
-                logger.errorFile("failed to write first seen ticket: \(error)")
-            }
-        }
+        DatabaseShrinkScheduler.install()
 
         UpdateManager.shared.startAutomaticChecks()
 

@@ -81,16 +81,6 @@ extension SettingController.SettingContent {
             #endif
         }
 
-        let autoCollapse = ConfigurableObject(
-            icon: "arrow.down.right.and.arrow.up.left",
-            title: "Collapse Reasoning Content",
-            explain: "Enable this to automatically collapse reasoning content after the reasoning is completed. This is useful for keeping the chat interface clean and focused on the final response.",
-            key: ModelManager.shared.collapseReasoningSectionWhenCompleteKey,
-            defaultValue: false,
-            annotation: .toggle,
-        )
-        .createView()
-
         override func setupContentViews() {
             super.setupContentViews()
 
@@ -123,7 +113,7 @@ extension SettingController.SettingContent {
             ) { $0.bottom /= 2 }
             stackView.addArrangedSubview(SeparatorView())
 
-            stackView.addArrangedSubviewWithMargin(autoCollapse)
+            stackView.addArrangedSubviewWithMargin(InlineActivityStepsSetting.configurableObject.createView())
             stackView.addArrangedSubview(SeparatorView())
 
             stackView.addArrangedSubviewWithMargin(StreamAudioEffectSetting.configurableObject.createView())

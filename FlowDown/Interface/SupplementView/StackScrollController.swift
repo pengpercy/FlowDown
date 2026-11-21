@@ -15,6 +15,14 @@ open class StackScrollController: UIViewController {
     /// Groups each section's rows into a card; see `arrangeSectionsInCardsIfNeeded`.
     var arrangesSectionsInCards = false
 
+    /// Where `FloatingChrome.usesSystemScrollEdge` (never, today) the scroll
+    /// view runs up under the bar (to the top of the view) so that what scrolls passes through the system's soft
+    /// scroll edge effect instead of being cut off at the bar's bottom. The
+    /// safe area's top becomes a content inset, so the page rests exactly
+    /// where it did when the scroll view started below the bar.
+    private let scrollsUnderTopBar = FloatingChrome.usesSystemScrollEdge
+    private var appliedTopInset: CGFloat = 0
+
     override open func viewDidLoad() {
         super.viewDidLoad()
 
@@ -38,7 +46,11 @@ open class StackScrollController: UIViewController {
         scrollView.contentInset = .init(top: 0, left: 0, bottom: 32, right: 0)
 
         scrollView.snp.makeConstraints { make in
-            make.top.equalTo(view.safeAreaLayoutGuide.snp.top)
+            if scrollsUnderTopBar {
+                make.top.equalToSuperview()
+            } else {
+                make.top.equalTo(view.safeAreaLayoutGuide.snp.top)
+            }
             make.leading.trailing.equalToSuperview()
             make.bottom.equalTo(view.safeAreaLayoutGuide.snp.bottom)
         }
@@ -46,7 +58,19 @@ open class StackScrollController: UIViewController {
         contentView.snp.makeConstraints { make in
             make.edges.equalToSuperview()
             make.width.equalToSuperview()
-            make.height.greaterThanOrEqualToSuperview()
+            if scrollsUnderTopBar {
+                // As tall as the scroll view was when it started below the
+                // bar, so short pages scroll no further than before.
+                make.height.greaterThanOrEqualTo(view.safeAreaLayoutGuide)
+            } else {
+                make.height.greaterThanOrEqualToSuperview()
+            }
+        }
+
+        if scrollsUnderTopBar {
+            setContentScrollView(scrollView, for: .top)
+            FloatingChrome.configureTopEdge(of: scrollView)
+            updateTopInset()
         }
 
         stackView.snp.makeConstraints { make in
@@ -76,6 +100,25 @@ open class StackScrollController: UIViewController {
     override open func viewWillLayoutSubviews() {
         super.viewWillLayoutSubviews()
         arrangeSectionsInCardsIfNeeded()
+    }
+
+    override open func viewSafeAreaInsetsDidChange() {
+        super.viewSafeAreaInsetsDidChange()
+        updateTopInset()
+    }
+
+    /// Keeps the content inset's top equal to the safe area's (the bar's
+    /// height), moving the offset with it so the content stays where it is
+    /// on screen.
+    private func updateTopInset() {
+        guard scrollsUnderTopBar else { return }
+        let topInset = view.safeAreaInsets.top
+        let delta = topInset - appliedTopInset
+        guard delta != 0 else { return }
+        appliedTopInset = topInset
+        let offset = scrollView.contentOffset.y - delta
+        scrollView.contentInset.top += delta
+        scrollView.contentOffset.y = offset
     }
 
     open func setupContentViews() { /* stub */ }

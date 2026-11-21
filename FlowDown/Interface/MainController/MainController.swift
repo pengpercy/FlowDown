@@ -555,7 +555,7 @@ class MainController: UIViewController {
         Logger.app.infoFile("using model: \(modelID)")
 
         // check if ui was loaded
-        guard let currentMessageListView = chatView.currentMessageListView else {
+        guard chatView.currentMessageListView != nil else {
             return
         }
 
@@ -573,7 +573,6 @@ class MainController: UIViewController {
         let editorObject = RichEditorView.Object(text: trimmedMessage)
         session.doInfere(
             modelID: modelID,
-            currentMessageListView: currentMessageListView,
             inputObject: editorObject,
         ) {
             Logger.app.infoFile("message sent and AI response triggered successfully via URL scheme")

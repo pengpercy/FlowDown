@@ -20,6 +20,7 @@ struct ConversationMetadata: Equatable {
 
 enum ConversationMetadataToolCall {
     static let name = "save_conversation_metadata"
+    static let titleLengthLimit = 32
 
     static var definition: ChatRequestBody.Tool {
         .function(
@@ -72,8 +73,8 @@ enum ConversationMetadataToolCall {
             .trimmingMarkdownBold()
 
         guard !normalized.isEmpty else { return nil }
-        if normalized.count > 32 {
-            normalized = String(normalized.prefix(32))
+        if normalized.count > titleLengthLimit {
+            normalized = String(normalized.prefix(titleLengthLimit))
         }
         return normalized
     }
@@ -94,13 +95,20 @@ enum ConversationMetadataToolCall {
 }
 
 extension ConversationManager {
-    /// Writes generated metadata onto the stored conversation. Automatic renames
-    /// also clear `shouldAutoRename` so a generated title is only ever chosen once.
+    /// Writes generated metadata onto the stored conversation and clears
+    /// `shouldAutoRename`: the conversation now has a title of its own, which
+    /// later turns and the first-message fallback leave alone. Automatic runs
+    /// are dropped when auto-rename was turned off while they ran (the user
+    /// renamed the conversation); Generate New Title is the user's own request
+    /// and always applies.
     func applyMetadata(
         _ metadata: ConversationMetadata,
         to identifier: Conversation.ID,
-        disablingAutoRename: Bool,
+        isAutomatic: Bool,
     ) {
+        if isAutomatic, conversation(identifier: identifier)?.shouldAutoRename == false {
+            return
+        }
         editConversation(identifier: identifier) {
             if let title = metadata.title {
                 $0.update(\.title, to: title)
@@ -109,9 +117,7 @@ extension ConversationManager {
                 let iconData = icon.textToImage(size: 128)?.pngData() ?? .init()
                 $0.update(\.icon, to: iconData)
             }
-            if disablingAutoRename {
-                $0.update(\.shouldAutoRename, to: false)
-            }
+            $0.update(\.shouldAutoRename, to: false)
         }
     }
 }
@@ -180,7 +186,11 @@ extension ConversationSessionManager.Session {
                 return nil
             }
 
-            return ConversationMetadataToolCall.parse(arguments: call.args)
+            guard let metadata = ConversationMetadataToolCall.parse(arguments: call.args) else {
+                Logger.model.errorFile("conversation metadata generation returned unparsable arguments")
+                return nil
+            }
+            return metadata
         } catch {
             Logger.model.errorFile("failed to generate conversation metadata: \(error)")
             return nil

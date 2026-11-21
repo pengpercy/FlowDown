@@ -17,14 +17,15 @@ private enum RichEditorShadowStyle {
         to shadowContainer: UIView,
         colorfulShadow: ColorfulShadowView,
         glassEffectView: UIVisualEffectView?,
+        cardFill: UIColor?,
     ) {
         switch self {
         case .glass:
-            shadowContainer.backgroundColor = .clear
+            shadowContainer.backgroundColor = cardFill ?? .clear
             colorfulShadow.isHidden = true
             glassEffectView?.isHidden = false
         case let .legacy(color):
-            shadowContainer.backgroundColor = color
+            shadowContainer.backgroundColor = cardFill ?? color
             colorfulShadow.isHidden = false
             glassEffectView?.isHidden = true
         }
@@ -88,10 +89,20 @@ class RichEditorView: EditorSectionView {
 
     let attachmentsBar = AttachmentsBar()
     let inputEditor = InputEditor()
+    let visualInputHint = VisualInputHintBar()
     let quickSettingBar = QuickSettingBar()
     let controlPanel = ControlPanel()
+    /// Covers the sections above while a tool call waits for the user.
+    let toolApproval = ToolApprovalSection()
 
     let shadowContainer = UIView()
+    /// An opaque fill under the card's surface, so nothing scrolling behind
+    /// the card tints through it. The glass (or the legacy shadow) keeps the
+    /// border and shadow. `nil` leaves the card see-through.
+    var cardFillColor: UIColor? {
+        didSet { applyShadowStyle() }
+    }
+
     let colorfulShadow = ColorfulShadowView()
     private var glassEffectView: UIVisualEffectView?
     let dropContainer = DropView()
@@ -101,6 +112,7 @@ class RichEditorView: EditorSectionView {
     lazy var sectionSubviews: [EditorSectionView] = [
         attachmentsBar,
         inputEditor,
+        visualInputHint,
         quickSettingBar,
         controlPanel,
     ]
@@ -163,6 +175,7 @@ class RichEditorView: EditorSectionView {
         for subview in sectionSubviews {
             addSubview(subview)
         }
+        addSubview(toolApproval)
 
         attachmentSeprator.backgroundColor = .gray.withAlphaComponent(0.25)
         addSubview(attachmentSeprator)
@@ -188,6 +201,30 @@ class RichEditorView: EditorSectionView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
+
+        let presentingApproval = toolApproval.isPresenting
+        // A waiting call covers the sections. They keep their own heights
+        // while they fade, so nothing inside them is squeezed.
+        for subview in sectionSubviews {
+            // Sections hidden by their own state stay hidden: the quick settings
+            // collapse to zero height while the attachment menu is open, and
+            // their unclipped pills would otherwise draw over its buttons.
+            let visible = if subview === visualInputHint {
+                visualInputHint.isActive
+            } else if subview === quickSettingBar {
+                quickSettingBar.isOpen
+            } else {
+                true
+            }
+            subview.alpha = presentingApproval || !visible ? 0 : 1
+            subview.isUserInteractionEnabled = !presentingApproval
+            subview.accessibilityElementsHidden = presentingApproval
+        }
+        dropContainer.isUserInteractionEnabled = !presentingApproval
+        if presentingApproval {
+            layoutToolApproval()
+            return
+        }
 
         var y: CGFloat = spacing
         var finalHeight: CGFloat = 0
@@ -239,7 +276,51 @@ class RichEditorView: EditorSectionView {
         dropContainer.frame = shadowContainer.frame
         dropColorView.frame = dropContainer.bounds
 
+        // Morphs from the input box when a request arrives.
+        toolApproval.frame = shadowContainer.frame
+
         heightPublisher.send(finalHeight + spacing)
+    }
+
+    /// The card alone, on the input box's ground.
+    private func layoutToolApproval() {
+        attachmentSeprator.alpha = 0
+        toolApproval.frame = CGRect(
+            x: spacing,
+            y: spacing,
+            width: bounds.width - spacing * 2,
+            height: toolApproval.heightPublisher.value,
+        )
+        shadowContainer.frame = toolApproval.frame
+        updateShadowGeometry()
+        dropContainer.frame = shadowContainer.frame
+        dropColorView.frame = dropContainer.bounds
+        heightPublisher.send(toolApproval.frame.maxY + spacing)
+    }
+
+    /// Shows a tool call waiting for the user in place of the input, or puts
+    /// the input back when `request` is nil.
+    func showToolApproval(_ request: ModelToolApprovalRequest?) {
+        guard toolApproval.request != request else { return }
+        if request != nil {
+            inputEditor.textView.resignFirstResponder()
+            controlPanel.close()
+            if toolApproval.bounds.width <= 0 {
+                toolApproval.frame.size.width = bounds.width - spacing * 2
+            }
+        }
+        let update = { [self] in
+            toolApproval.show(request)
+            setNeedsLayout()
+        }
+        if window != nil, !UIAccessibility.isReduceMotionEnabled {
+            doWithAnimation(update)
+        } else {
+            UIView.performWithoutAnimation {
+                update()
+                layoutIfNeeded()
+            }
+        }
     }
 
     func updateHeightConstraint(_ height: CGFloat) {
@@ -281,6 +362,7 @@ class RichEditorView: EditorSectionView {
             to: shadowContainer,
             colorfulShadow: colorfulShadow,
             glassEffectView: glassEffectView,
+            cardFill: cardFillColor,
         )
     }
 

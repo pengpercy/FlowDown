@@ -42,8 +42,13 @@ extension MessageListView {
                 .when { if case .activity = $0 { true } else { false } }
                 .height { [weak self] entry, context in
                     guard let self, case let .activity(summary) = entry else { return 0 }
-                    return rowHeight(inListWidth: context.width) { _ in
-                        ActivitySummaryView.height(for: summary, font: self.theme.fonts.body)
+                    return rowHeight(inListWidth: context.width) { containerWidth in
+                        ActivitySummaryView.height(
+                            for: summary,
+                            font: self.theme.fonts.body,
+                            stepFont: self.theme.fonts.footnote,
+                            width: containerWidth,
+                        )
                     }
                 }
                 .configure { [weak self] row, entry, _ in
@@ -100,20 +105,6 @@ extension MessageListView {
                     guard let self, case let .hint(_, content) = entry else { return }
                     prepare(row, for: entry)
                     row.text = content
-                }
-
-            ListRow(WebSearchStateView.self)
-                .when { if case .webSearchContent = $0 { true } else { false } }
-                .height { [weak self] _, context in
-                    guard let self else { return 0 }
-                    return rowHeight(inListWidth: context.width) { _ in
-                        WebSearchStateView.intrinsicHeight(withLabelFont: self.theme.fonts.body)
-                    }
-                }
-                .configure { [weak self] row, entry, _ in
-                    guard let self, case let .webSearchContent(webSearchPhase) = entry else { return }
-                    prepare(row, for: entry)
-                    row.update(with: webSearchPhase)
                 }
 
             ListRow(ActivityReportingView.self)
@@ -298,7 +289,7 @@ extension MessageListView {
             holder.shouldDismissWhenTappedAround = true
             holder.shouldDismissWhenEscapeKeyPressed = true
         #else
-            let holder = UINavigationController(rootViewController: controller)
+            let holder = FadeBarNavigationController(rootViewController: controller)
             controller.navigationItem.leftBarButtonItem = UIBarButtonItem(
                 image: UIImage(systemName: "xmark"),
                 primaryAction: UIAction { [weak holder] _ in holder?.dismiss(animated: true) },
@@ -323,7 +314,7 @@ extension MessageListView {
                     else { return nil }
                     return UIAction(title: String(localized: "Retry"), image: .init(systemName: "arrow.clockwise")) { [weak self] _ in
                         guard let self else { return }
-                        session.retry(byClearAfter: messageIdentifier, currentMessageListView: self)
+                        session.retry(byClearAfter: messageIdentifier)
                     }
                 }(),
                 { () -> UIAction? in
@@ -362,7 +353,7 @@ extension MessageListView {
                     else { return nil }
                     return UIAction(title: String(localized: "Retry"), image: .init(systemName: "arrow.clockwise")) { [weak self] _ in
                         guard let self else { return }
-                        session.retry(byClearAfter: messageIdentifier, currentMessageListView: self)
+                        session.retry(byClearAfter: messageIdentifier)
                     }
                 }(),
             ].compactMap(\.self)),
@@ -470,7 +461,7 @@ extension MessageListView {
             holder.shouldDismissWhenTappedAround = true
             holder.shouldDismissWhenEscapeKeyPressed = true
         #else
-            let holder = UINavigationController(rootViewController: controller)
+            let holder = FadeBarNavigationController(rootViewController: controller)
             holder.preferredContentSize = .init(width: 555, height: 555 - holder.navigationBar.frame.height)
             holder.modalTransitionStyle = .coverVertical
             holder.modalPresentationStyle = .formSheet
