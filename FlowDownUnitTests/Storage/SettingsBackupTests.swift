@@ -87,9 +87,11 @@ struct SettingsBackupTests {
                 ("Model.Default.AuxiliaryVisual", encodedConfigurableValue("visual-model")),
                 ("Model.Default.AuxiliaryVisual.SkipIfPossible", encodedConfigurableValue(false)),
                 ("InferenceController.defaultAuxiliaryModelAlignWithChatModel", encodedConfigurableValue(false)),
+                ("Model.Inference.AppleIntelligence.Cloud.ReasoningEffort", encodedConfigurableValue("moderate")),
                 ("Model.Inference.Prompt.Temperature", encodedConfigurableValue(1.5)),
                 ("CONFKIT.Model.Inference.Temperature", encodedConfigurableValue(1.5)),
                 ("Model.ChatInterface.CollapseReasoningSectionWhenComplete", encodedConfigurableValue(true)),
+                ("wiki.qaq.MLX.GPU.cacheSize", encodedConfigurableValue("allowedInForeground")),
             ]
             #expect(Set(retired.map(\.0)) == SettingsBackup.retiredKeys)
 

@@ -41,9 +41,17 @@ extension SettingController.SettingContent {
             defaultValue: true,
             storage: UserDefaultKeyValueStorage(suite: .standard),
         )).with {
-            $0.configure(icon: UIImage(systemName: "switch.2"))
-            $0.configure(title: "Enable Foundation Model")
-            $0.configure(description: "Show Foundation Model in the model picker when available.")
+            $0.configure(icon: UIImage(systemName: "apple.intelligence"))
+            $0.configure(title: AppleIntelligenceModelNames.local)
+        }
+
+        private let privateCloudComputeToggle = ConfigurableBooleanBlockView(storage: .init(
+            key: ModelManager.privateCloudComputeEnabledKey,
+            defaultValue: true,
+            storage: UserDefaultKeyValueStorage(suite: .standard),
+        )).with {
+            $0.configure(icon: UIImage(systemName: "icloud"))
+            $0.configure(title: AppleIntelligenceModelNames.privateCloudCompute)
         }
 
         override func setupContentViews() {
@@ -96,11 +104,13 @@ extension SettingController.SettingContent {
             ) { $0.top /= 2 }
             stackView.addArrangedSubview(SeparatorView())
 
-            // Apple Intelligence Availability Section
+            // Apple Intelligence Models: one switch per model, which decides
+            // whether the model menu lists it. The text under a switch
+            // describes the model, then says why it can't run on a new line.
             if #available(iOS 26.0, macCatalyst 26.0, *) {
                 stackView.addArrangedSubviewWithMargin(
                     ConfigurableSectionHeaderView().with(
-                        header: "Apple Intelligence",
+                        header: "Apple Intelligence Models",
                     ),
                 ) { $0.bottom /= 2 }
                 stackView.addArrangedSubview(SeparatorView())
@@ -108,49 +118,60 @@ extension SettingController.SettingContent {
                 stackView.addArrangedSubviewWithMargin(appleIntelligenceToggle)
                 stackView.addArrangedSubview(SeparatorView())
 
-                let appleIntelligenceStatusView = ConfigurableInfoView().with {
-                    $0.configure(icon: UIImage(systemName: "apple.intelligence"))
-                    $0.configure(title: "Apple Intelligence")
-                    $0.configure(description: AppleIntelligenceModel.shared.availabilityDescription)
-                    $0.configure(value: AppleIntelligenceModel.shared.availabilityStatus)
-                }
-                stackView.addArrangedSubviewWithMargin(appleIntelligenceStatusView)
+                stackView.addArrangedSubviewWithMargin(privateCloudComputeToggle)
                 stackView.addArrangedSubview(SeparatorView())
 
                 stackView.addArrangedSubviewWithMargin(
                     ConfigurableSectionFooterView().with(
-                        footer: "Apple Intelligence provides on-device AI capabilities when available.",
+                        footer: .init(AppleIntelligenceModelDescriptions.sectionFooter(
+                            isEntitled: PrivateCloudComputeCenter.shared.isEntitled,
+                        )),
                     ),
                 ) { $0.top /= 2 }
                 stackView.addArrangedSubview(SeparatorView())
+
+                updateAppleIntelligenceModels()
 
                 appleIntelligenceToggle.onUpdated = { [weak self] isOn in
                     ModelManager.shared.appleIntelligenceEnabled = isOn
                     self?.updateDefaultModelinfoFile()
                 }
+                privateCloudComputeToggle.onUpdated = { [weak self] isOn in
+                    ModelManager.shared.privateCloudComputeEnabled = isOn
+                    self?.updateDefaultModelinfoFile()
+                }
             }
-
-            stackView.addArrangedSubviewWithMargin(
-                ConfigurableSectionHeaderView().with(
-                    header: String("MLX"),
-                ),
-            ) { $0.bottom /= 2 }
-            stackView.addArrangedSubview(SeparatorView())
-
-            stackView.addArrangedSubviewWithMargin(MLX.GPU.configurableObject.createView())
-            stackView.addArrangedSubview(SeparatorView())
-
-            stackView.addArrangedSubviewWithMargin(
-                ConfigurableSectionFooterView().with(
-                    footer: "MLX is only available on Apple Silicon devices with Metal 3 support.",
-                ),
-            ) { $0.top /= 2 }
-            stackView.addArrangedSubview(SeparatorView())
         }
 
         override func viewWillAppear(_ animated: Bool) {
             super.viewWillAppear(animated)
             updateDefaultModelinfoFile()
+            updateAppleIntelligenceModels()
+        }
+
+        func updateAppleIntelligenceModels() {
+            if #available(iOS 26.0, macCatalyst 26.0, *) {
+                let localReason = PrivateCloudComputeCenter.shared.isOnDeviceModelAvailable
+                    ? nil
+                    : AppleIntelligenceModel.shared.availabilityDescription.map { String(localized: $0) }
+                appleIntelligenceToggle.configure(description: .init(AppleIntelligenceModelDescriptions.text(
+                    description: AppleIntelligenceModelDescriptions.local,
+                    unavailableReason: localReason,
+                )))
+            }
+            privateCloudComputeToggle.configure(description: .init(AppleIntelligenceModelDescriptions.text(
+                description: AppleIntelligenceModelDescriptions.privateCloudCompute,
+                unavailableReason: PrivateCloudComputeCenter.shared.switchReasonText,
+            )))
+            // Without the entitlement (the Developer ID Mac build) the model
+            // can never run here, so the switch shows off and can't be used;
+            // the section footer says why. The stored preference is left as
+            // it is.
+            let isEntitled = PrivateCloudComputeCenter.shared.isEntitled
+            privateCloudComputeToggle.switchView.isEnabled = isEntitled
+            if !isEntitled {
+                privateCloudComputeToggle.switchView.setOn(false, animated: false)
+            }
         }
 
         func updateDefaultModelinfoFile() {
@@ -171,6 +192,11 @@ extension SettingController.SettingContent {
                     row.configure(value: AppleIntelligenceModel.shared.modelDisplayName)
                     if !AppleIntelligenceModel.shared.isAvailable {
                         row.configure(description: "Status: \(AppleIntelligenceModel.shared.availabilityStatus)")
+                    }
+                } else if id == PrivateCloudComputeCenter.modelIdentifier {
+                    row.configure(value: AppleIntelligenceModelNames.privateCloudComputeModel)
+                    if let unavailableText = PrivateCloudComputeCenter.shared.unavailableText {
+                        row.configure(description: .init(unavailableText))
                     }
                 } else {
                     row.configure(value: displayName(for: id))

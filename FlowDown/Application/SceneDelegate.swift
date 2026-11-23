@@ -74,7 +74,6 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     /// restore must run on become-active, not on will-enter-foreground.
     func sceneDidBecomeActive(_: UIScene) {
         guard !RecoveryMode.isActivated else { return }
-        MLX.GPU.onApplicationBecomeActivate()
         #if canImport(ActivityKit) && os(iOS) && !targetEnvironment(macCatalyst)
             if #available(iOS 16.2, *) {
                 LiveActivityService.shared.appDidEnterForeground()
@@ -84,7 +83,6 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     func sceneWillResignActive(_: UIScene) {
         guard !RecoveryMode.isActivated else { return }
-        MLX.GPU.onApplicationResignActivate()
         #if canImport(ActivityKit) && os(iOS) && !targetEnvironment(macCatalyst)
             if #available(iOS 16.2, *) {
                 LiveActivityService.shared.appWillEnterBackground()
@@ -231,6 +229,10 @@ private extension SceneDelegate {
     }
 
     func handleFlowDownURL(_ url: URL) {
+        // OAuth redirects belong to the ASWebAuthenticationSession that
+        // started them; one reaching the app another way carries a code
+        // nobody is waiting for, so it must not be read or logged.
+        guard url.host()?.lowercased() != MCPOAuthManager.callbackHost else { return }
         Logger.app.infoFile("handling incoming message: \(url)")
         if let handled = ModelExchangeAPI.resolveInputScheme(url) {
             if handled == false {

@@ -90,6 +90,9 @@ class RichEditorView: EditorSectionView {
     let attachmentsBar = AttachmentsBar()
     let inputEditor = InputEditor()
     let visualInputHint = VisualInputHintBar()
+    /// Says the next reply may be slower after the tools change mid-conversation.
+    /// Floats above the input box and takes no layout space.
+    let toolsChangeHint = ToolsChangeHintView()
     let quickSettingBar = QuickSettingBar()
     let controlPanel = ControlPanel()
     /// Covers the sections above while a tool call waits for the user.
@@ -100,7 +103,10 @@ class RichEditorView: EditorSectionView {
     /// the card tints through it. The glass (or the legacy shadow) keeps the
     /// border and shadow. `nil` leaves the card see-through.
     var cardFillColor: UIColor? {
-        didSet { applyShadowStyle() }
+        didSet {
+            applyShadowStyle()
+            toolsChangeHint.fillColor = cardFillColor ?? .background
+        }
     }
 
     let colorfulShadow = ColorfulShadowView()
@@ -179,6 +185,9 @@ class RichEditorView: EditorSectionView {
 
         attachmentSeprator.backgroundColor = .gray.withAlphaComponent(0.25)
         addSubview(attachmentSeprator)
+        // Above the card it floats over; outside the editor's bounds, so it
+        // never takes a touch (and refuses them anyway).
+        addSubview(toolsChangeHint)
 
         inputEditor.delegate = self
         controlPanel.delegate = self
@@ -209,8 +218,8 @@ class RichEditorView: EditorSectionView {
             // Sections hidden by their own state stay hidden: the quick settings
             // collapse to zero height while the attachment menu is open, and
             // their unclipped pills would otherwise draw over its buttons.
-            let visible = if subview === visualInputHint {
-                visualInputHint.isActive
+            let visible = if let hint = subview as? VisualInputHintBar {
+                hint.isActive
             } else if subview === quickSettingBar {
                 quickSettingBar.isOpen
             } else {
@@ -221,6 +230,8 @@ class RichEditorView: EditorSectionView {
             subview.accessibilityElementsHidden = presentingApproval
         }
         dropContainer.isUserInteractionEnabled = !presentingApproval
+        toolsChangeHint.alpha = presentingApproval ? 0 : 1
+        toolsChangeHint.accessibilityElementsHidden = presentingApproval
         if presentingApproval {
             layoutToolApproval()
             return
@@ -276,10 +287,23 @@ class RichEditorView: EditorSectionView {
         dropContainer.frame = shadowContainer.frame
         dropColorView.frame = dropContainer.bounds
 
+        layoutToolsChangeHint()
+
         // Morphs from the input box when a request arrives.
         toolApproval.frame = shadowContainer.frame
 
         heightPublisher.send(finalHeight + spacing)
+    }
+
+    /// 8 pt above the input box's top edge, centred on it, at most its width.
+    private func layoutToolsChangeHint() {
+        let card = shadowContainer.frame
+        let size = toolsChangeHint.preferredSize(maxWidth: card.width)
+        toolsChangeHint.bounds = CGRect(origin: .zero, size: size)
+        toolsChangeHint.center = CGPoint(
+            x: card.midX,
+            y: card.minY - ToolsChangeHintView.gapAboveInput - size.height / 2,
+        )
     }
 
     /// The card alone, on the input box's ground.

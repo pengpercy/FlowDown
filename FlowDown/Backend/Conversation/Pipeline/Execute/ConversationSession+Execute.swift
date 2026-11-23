@@ -88,6 +88,8 @@ extension ConversationSession {
         var requestMessages: [ChatRequestBody.Message] = []
         await buildInitialRequestMessages(&requestMessages, modelCapabilities)
 
+        let usesPrivateCloudCompute = modelID == PrivateCloudComputeCenter.modelIdentifier
+
         do {
             try await doInfereExecuteCore(
                 inputObject,
@@ -98,11 +100,20 @@ extension ConversationSession {
         } catch {
             logger.errorFile("\(error.localizedDescription)")
             finalizeInterruptedReasoning()
-            let sanitized = error.localizedDescription
+            var sanitized = error.localizedDescription
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            if error is InferenceUserCancellationError {
+            let cloudFailureText = usesPrivateCloudCompute
+                ? PrivateCloudComputeCenter.shared.failureText(from: error)
+                : nil
+            if let cloudFailureText {
+                // Offline, quota and busy states get the app's own words.
+                sanitized = cloudFailureText
+            }
+            if cloudFailureText != nil || error is InferenceUserCancellationError {
                 // A cancellation is the user's own doing, not a failure worth an
-                // assistant bubble; show it like the date separators do.
+                // assistant bubble; show it like the date separators do. The
+                // cloud model's known failures read the same way, not as an
+                // error dump.
                 let hintMessage = appendNewMessage(role: .hint)
                 hintMessage.update(\.document, to: sanitized)
             } else {
@@ -192,10 +203,11 @@ extension ConversationSession {
         let shouldPrepareMCP = MCPService.shared.servers.value.contains(where: \.isEnabled)
         if shouldPrepareMCP {
             showActivity(String(localized: "Preparing Model Context"))
-            await MCPService.shared.prepareForConversation { [weak self] status in
+            let mcpErrors = await MCPService.shared.prepareForConversation { [weak self] status in
                 self?.showActivity(status)
             }
             try checkCancellation()
+            await noteMCPAuthorizationProblems(mcpErrors)
             showActivity(String(localized: "Preparing Model Context"))
         }
 
@@ -294,5 +306,29 @@ extension ConversationSession {
         if shouldAutoRename {
             await updateTitleAndIcon()
         }
+    }
+}
+
+extension ConversationSession {
+    /// Adds one hint per server that needs sign-in, each at most once per
+    /// conversation, instead of failing the turn. Other connection errors
+    /// add nothing here.
+    func noteMCPAuthorizationProblems(_ errors: [Swift.Error]) async {
+        let messages = errors.compactMap { error -> String? in
+            guard let error = error as? MCPError else { return nil }
+            switch error {
+            case .signInRequired, .clientIDRequired, .authorizationUnsupported:
+                return error.localizedDescription
+            default:
+                return nil
+            }
+        }
+        var appended = false
+        for message in messages where mcpAuthorizationHintsShown.insert(message).inserted {
+            let hintMessage = appendNewMessage(role: .hint)
+            hintMessage.update(\.document, to: message)
+            appended = true
+        }
+        if appended { await requestUpdate() }
     }
 }

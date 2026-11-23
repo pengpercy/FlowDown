@@ -230,7 +230,13 @@ extension RichEditorView: QuickSettingBar.Delegate {
 
     func updateModelinfoFile(postUpdate: Bool = true) {
         let newModel = delegate?.onRichEditorRequestCurrentModelName()
-        doWithAnimation { self.quickSettingBar.setModelName(newModel) }
+        let newModelIcon = delegate?.onRichEditorRequestCurrentModelIcon()
+        // In one unanimated pass: a label shows its new text at once, so a
+        // selector still springing to the new width would cut the name off.
+        UIView.performWithoutAnimation {
+            quickSettingBar.setModelName(newModel, icon: newModelIcon)
+            quickSettingBar.layoutIfNeeded()
+        }
         let newModelIdentifier = delegate?.onRichEditorRequestCurrentModelIdentifier()
         quickSettingBar.setModelIdentifier(newModelIdentifier)
         quickSettingBar.updateToolCallAvailability(currentModelSupportsToolCall)
@@ -253,6 +259,15 @@ extension RichEditorView: QuickSettingBar.Delegate {
         inputEditor.sendButton.isEnabled = !visualInputHint.isActive
         if becameVisible, let hint {
             UIAccessibility.post(notification: .announcement, argument: hint)
+        }
+    }
+
+    /// Shows a note above the input until the next message is sent or the
+    /// conversation changes.
+    func showToolsChangeHint(_ text: String) {
+        let becameVisible = toolsChangeHint.setActive(true, text: text)
+        if becameVisible {
+            UIAccessibility.post(notification: .announcement, argument: text)
         }
     }
 

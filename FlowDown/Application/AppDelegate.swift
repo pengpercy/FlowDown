@@ -45,13 +45,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         #endif
         _ = SoundEffectPlayer.shared
 
-        MLX.GPU.subscribeToConfigurableItem()
+        MLX.GPU.startMemoryPressureMonitoring()
         EditorBehavior.subscribeToConfigurableItem()
         MarkdownTheme.subscribeToConfigurableItem()
         CodeBlockCollapseSetting.subscribeToConfigurableItem()
         ChatLayoutWidth.subscribeToConfigurableItem()
         ScrubberConfiguration.subscribeToConfigurableItem()
         ScrubberConfiguration.setup() // build access control rule
+        ModelManager.removeRetiredSettings()
 
         AlertControllerConfiguration.alertImage = .avatar
         AlertControllerConfiguration.accentColor = .accent
